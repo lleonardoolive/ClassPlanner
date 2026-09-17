@@ -1,3 +1,4 @@
+# Planejador de aulas multificional. Criado por Leonardo Pereira de Oliveira. Uso de IA neste projeto.
 import json
 import os
 import sqlite3
