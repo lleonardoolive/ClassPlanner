@@ -1,11 +1,9 @@
 {
-  "inicio_ano": "2026-08-03",
-  "fim_ano": "2026-12-18",
   "eventos": [
     {
-      "data": "2026-11-02",
-      "nome": "Finados",
-      "tipo": "Feriado"
+      "data": "2026-02-03",
+      "nome": "Início do Ano Letivo",
+      "tipo": "Início do Ano Letivo"
     }
   ],
   "turmas": [
@@ -17,5 +15,23 @@
   "disciplinas": [
     "Inglês",
     "Artes"
-  ]
+  ],
+  "bncc": {
+    "Inglês": [
+      "EF06LI01",
+      "EF06LI04",
+      "EF07LI01",
+      "EF07LI12",
+      "EF08LI05",
+      "EF09LI02"
+    ],
+    "Artes": [
+      "EF69AR01 (Visuais)",
+      "EF69AR04 (Visuais)",
+      "EF69AR09 (Dança)",
+      "EF69AR16 (Música)",
+      "EF69AR24 (Teatro)"
+    ]
+  },
+  "calendario_padrao": "Google Calendar"
 }

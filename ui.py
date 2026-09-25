@@ -16,7 +16,7 @@ from database import RepositorioAulas
 from services import ServicoAulas
 
 # ================= COMPONENTES CUSTOMIZADOS =================
-class SeletorDataModal(ttk.Frame):
+class SeletorDataModal(tk.Frame):
     """Componente à prova de falhas para contornar o bug do DateEntry no Linux"""
     def __init__(self, parent, font, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
@@ -40,7 +40,7 @@ class SeletorDataModal(ttk.Frame):
         top.geometry("280x260")
         top.resizable(False, False)
         top.focus_force()
-        top.grab_set() # Bloqueia a janela de baixo enquanto o calendário está aberto
+        top.grab_set() 
         
         cal = Calendar(top, selectmode="day", date_pattern="yyyy-mm-dd", font=("Inter", 10),
                        background="white", foreground="#1E293B", bordercolor="#E2E8F0",
@@ -236,7 +236,6 @@ class PlanejadorApp(tk.Tk):
         scroll.pack(side="right", fill="y")
         self.tree_aulas.config(yscrollcommand=scroll.set)
         
-        # Vincula a tecla DELETE do teclado à função de exclusão
         self.tree_aulas.bind("<Delete>", lambda e: self._excluir_aula())
         
         self.tree_aulas.tag_configure(CategoriaAula.TEORICA.value, foreground="#1E293B")
@@ -272,7 +271,6 @@ class PlanejadorApp(tk.Tk):
         fonte_input = ("Inter", 11)
         
         ttk.Label(form_frame, text="Data:", background="#ffffff").grid(row=0, column=0, sticky="w", pady=15)
-        # Substituímos o problemático DateEntry nativo pela nossa versão modal
         self.campos['data'] = SeletorDataModal(form_frame, font=fonte_input, background="#ffffff")
         self.campos['data'].grid(row=0, column=1, sticky="w", padx=15)
         
@@ -477,12 +475,15 @@ class PlanejadorApp(tk.Tk):
         self.tree_eventos.heading("Nome", text="Descrição"); self.tree_eventos.column("Nome", width=250)
         self.tree_eventos.heading("Tipo", text="Classificação"); self.tree_eventos.column("Tipo", width=150)
         self.tree_eventos.pack(fill="both", expand=True)
-        ttk.Button(frame_esq, text="🗑️ Remover Selecionado", style="Danger.TButton", command=self._remover_evento).pack(anchor="e", pady=15)
+        
+        botoes_ev = tk.Frame(frame_esq, background="#ffffff")
+        botoes_ev.pack(fill="x", pady=15)
+        ttk.Button(botoes_ev, text="🗑️ Remover Selecionado", style="Danger.TButton", command=self._remover_evento).pack(side="right", padx=5)
+        ttk.Button(botoes_ev, text="✏️ Editar Selecionado", command=self._editar_evento).pack(side="right", padx=5)
         
         frame_dir = ttk.Frame(pane, style="Card.TFrame", padding=25)
         pane.add(frame_dir, weight=1)
         
-        # Novas opções de Configuração de Calendário Padrão
         ttk.Label(frame_dir, text="Calendário Padrão de Exportação", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
         self.combo_calendario_padrao = ttk.Combobox(frame_dir, values=["Google Calendar", "Microsoft Outlook"], state="readonly", font=self.fonte_padrao)
         self.combo_calendario_padrao.set(self.calendario_padrao)
@@ -501,14 +502,36 @@ class PlanejadorApp(tk.Tk):
         self._preencher_configuracoes_ui()
 
     def _adicionar_evento(self):
-        if not self.ev_nome.get(): return
         tipo = self.ev_tipo.get()
+        nome = self.ev_nome.get().strip()
+        
+        if not nome:
+            nome = tipo
+            
         if tipo in [TipoEvento.INICIO_ANO.value, TipoEvento.FIM_ANO.value]:
             self.eventos_especiais = [e for e in self.eventos_especiais if e["tipo"] != tipo]
         self.eventos_especiais = [e for e in self.eventos_especiais if e["data"] != self.ev_data.get_date().strftime("%Y-%m-%d")]
-        self.eventos_especiais.append({"data": self.ev_data.get_date().strftime("%Y-%m-%d"), "nome": self.ev_nome.get(), "tipo": tipo})
+        self.eventos_especiais.append({"data": self.ev_data.get_date().strftime("%Y-%m-%d"), "nome": nome, "tipo": tipo})
         self._salvar_configuracoes(silencioso=True)
         self.ev_nome.delete(0, tk.END)
+
+    def _editar_evento(self):
+        sel = self.tree_eventos.selection()
+        if not sel: 
+            messagebox.showwarning("Aviso", "Selecione um evento na lista para editar.")
+            return
+            
+        data_str = self.tree_eventos.item(sel[0])['values'][0]
+        evento_original = next((e for e in self.eventos_especiais if e["data"] == data_str), None)
+        
+        if evento_original:
+            self.ev_data.set_date(datetime.strptime(evento_original["data"], "%Y-%m-%d").date())
+            self.ev_nome.delete(0, tk.END)
+            self.ev_nome.insert(0, evento_original["nome"])
+            self.ev_tipo.set(evento_original["tipo"])
+            
+            self.eventos_especiais = [e for e in self.eventos_especiais if e["data"] != data_str]
+            self._salvar_configuracoes(silencioso=True)
 
     def _remover_evento(self):
         sel = self.tree_eventos.selection()
