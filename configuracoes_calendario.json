@@ -1,0 +1,24 @@
+{
+  "eventos": [
+    {
+      "data": "2026-08-01",
+      "nome": "A",
+      "tipo": "Início do Ano Letivo"
+    },
+    {
+      "data": "2026-12-18",
+      "nome": "Z",
+      "tipo": "Fim do Ano Letivo"
+    }
+  ],
+  "turmas": [
+    "6º Ano A",
+    "7º Ano A",
+    "8º Ano A",
+    "9º Ano A"
+  ],
+  "disciplinas": [
+    "Inglês",
+    "Artes"
+  ]
+}
