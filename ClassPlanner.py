@@ -150,6 +150,11 @@ class ServicoAulas:
         if not aulas:
             raise ValueError("Não há aulas no banco para exportar.")
             
+        # Função interna para limpar caracteres que quebram o arquivo .ics
+        def _escapar_ics(texto: str) -> str:
+            if not texto: return ""
+            return texto.replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,').replace('\n', '\\n')
+            
         linhas = [
             "BEGIN:VCALENDAR",
             "VERSION:2.0",
@@ -167,13 +172,14 @@ class ServicoAulas:
                 linhas.append(f"DTEND;TZID=America/Sao_Paulo:{dt_str}T090000")
                 
                 titulo = f"{aula.disciplina} ({aula.turma}) - {aula.categoria}"
-                linhas.append(f"SUMMARY:{titulo}")
+                linhas.append(f"SUMMARY:{_escapar_ics(titulo)}")
                 
-                desc = f"BNCC: {aula.bncc}\n\n" + aula.observacoes.replace("\n", "\\n")
-                linhas.append(f"DESCRIPTION:{desc}")
+                desc = f"BNCC: {aula.bncc}\n\n{aula.observacoes}"
+                linhas.append(f"DESCRIPTION:{_escapar_ics(desc)}")
                 
                 if aula.categoria == CategoriaAula.PASSEIO_CULTURA.value:
-                    linhas.append(f"LOCATION:{aula.endereco_local} - {aula.nome_local}")
+                    loc = f"{aula.endereco_local} - {aula.nome_local}"
+                    linhas.append(f"LOCATION:{_escapar_ics(loc)}")
                     
                 linhas.append("END:VEVENT")
             except ValueError as e:
@@ -776,7 +782,11 @@ class PlanejadorApp(tk.Tk):
     def _carregar_configuracoes(self):
         try:
             with ARQUIVO_CONFIGURACAO.open("r", encoding="utf-8") as f: return json.load(f)
-        except Exception: return {}
+        except FileNotFoundError:
+            return {} 
+        except Exception as e:
+            logging.error(f"Erro ao carregar configurações: {e}")
+            return {}
 
     def _marcar_calendario(self):
         self.cal.calevent_remove("all")
@@ -794,7 +804,8 @@ class PlanejadorApp(tk.Tk):
                 elif ev["tipo"] in [TipoEvento.FERIADO.value, TipoEvento.RECESSO.value]: tag = "feriado"
                 else: tag = "sabado_letivo"
                 self.cal.calevent_create(data_obj, ev["nome"], tags=tag)
-            except ValueError: pass
+            except ValueError as e:
+                logging.warning(f"Aviso de data no evento do calendário ({ev['data']}): {e}")
                 
         dias_aulas = {}
         for aula in self.aulas_registradas:
@@ -805,13 +816,16 @@ class PlanejadorApp(tk.Tk):
         for data_str, tag in dias_aulas.items():
             if not any(e["data"] == data_str for e in self.eventos_especiais if e["tipo"] != TipoEvento.SABADO_LETIVO.value):
                 try: self.cal.calevent_create(date.fromisoformat(data_str), "Aula", tags=tag)
-                except ValueError: pass
+                except ValueError as e: logging.warning(f"Aviso de data da aula no calendário ({data_str}): {e}")
         self._ao_selecionar_data_calendario(None)
 
     def _ao_selecionar_data_calendario(self, event):
         data_str = self.cal.get_date()
-        try: self.campos['data'].set_date(datetime.strptime(data_str, "%Y-%m-%d").date())
-        except ValueError: return
+        try: 
+            self.campos['data'].set_date(datetime.strptime(data_str, "%Y-%m-%d").date())
+        except ValueError as e:
+            logging.warning(f"Data selecionada inválida ({data_str}): {e}")
+            return
         
         resumo = []
         for e in [ev for ev in self.eventos_especiais if ev["data"] == data_str]:
@@ -832,9 +846,9 @@ class PlanejadorApp(tk.Tk):
             if self.filtro_mes_atual.get() and not aula.data.startswith(mes_atual): continue
             try:
                 d_br = datetime.strptime(aula.data, "%Y-%m-%d").strftime("%d/%m/%Y")
-                # CRÍTICO: Utiliza o aula.id como identificador (iid) interno do item na tabela
                 self.tree_aulas.insert("", tk.END, iid=aula.id, values=(d_br, aula.turma, aula.disciplina, aula.categoria, aula.bncc), tags=(aula.categoria,))
-            except ValueError: pass
+            except ValueError as e:
+                logging.warning(f"Erro ao formatar data da aula {aula.id} para listagem ({aula.data}): {e}")
 
     def _nova_aula_pelo_calendario(self):
         self._cancelar_edicao()
