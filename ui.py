@@ -1,20 +1,65 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json
-import os
 import uuid
 import logging
 from datetime import date, datetime
 
 try:
-    from tkcalendar import Calendar, DateEntry
+    from tkcalendar import Calendar
 except ImportError as exc:
     raise SystemExit("Instale a biblioteca 'tkcalendar': pip3 install tkcalendar") from exc
 
 from models import (Aula, CategoriaAula, TipoEvento, TipoAvaliacao, 
-                    ARQUIVO_CONFIGURACAO, ARQUIVO_AGENDA_JSON_ANTIGO, BANCO_DADOS_AULAS)
+                    ARQUIVO_CONFIGURACAO, BANCO_DADOS_AULAS)
 from database import RepositorioAulas
 from services import ServicoAulas
+
+# ================= COMPONENTES CUSTOMIZADOS =================
+class SeletorDataModal(ttk.Frame):
+    """Componente à prova de falhas para contornar o bug do DateEntry no Linux"""
+    def __init__(self, parent, font, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.data_var = tk.StringVar(value=date.today().strftime("%Y-%m-%d"))
+        
+        self.entry = ttk.Entry(self, textvariable=self.data_var, width=12, font=font, state="readonly")
+        self.entry.pack(side="left", padx=(0, 5))
+        
+        self.btn = ttk.Button(self, text="📅", width=3, command=self._abrir_calendario)
+        self.btn.pack(side="left")
+        
+    def get_date(self):
+        return datetime.strptime(self.data_var.get(), "%Y-%m-%d").date()
+        
+    def set_date(self, d: date):
+        self.data_var.set(d.strftime("%Y-%m-%d"))
+        
+    def _abrir_calendario(self):
+        top = tk.Toplevel(self)
+        top.title("Selecione a Data")
+        top.geometry("280x260")
+        top.resizable(False, False)
+        top.focus_force()
+        top.grab_set() # Bloqueia a janela de baixo enquanto o calendário está aberto
+        
+        cal = Calendar(top, selectmode="day", date_pattern="yyyy-mm-dd", font=("Inter", 10),
+                       background="white", foreground="#1E293B", bordercolor="#E2E8F0",
+                       headersbackground="#F1F5F9", headersforeground="#475569", 
+                       selectbackground="#2563EB", selectforeground="white",
+                       normalbackground="white", weekendbackground="#F8FAFC",
+                       showweeknumbers=False)
+        try:
+            cal.selection_set(self.get_date())
+        except ValueError:
+            pass
+        cal.pack(fill="both", expand=True, padx=10, pady=(10, 5))
+        
+        def confirmar():
+            self.data_var.set(cal.get_date())
+            top.grab_release()
+            top.destroy()
+            
+        ttk.Button(top, text="Confirmar Data", command=confirmar, style="Primary.TButton").pack(pady=5)
 
 class JanelaAvaliacoes(tk.Toplevel):
     def __init__(self, parent, servico, turma, disciplina):
@@ -77,6 +122,7 @@ class JanelaAvaliacoes(tk.Toplevel):
         self.parent_app.notebook.select(self.parent_app.aba_agenda)
         self.destroy()
 
+# ================= APLICAÇÃO PRINCIPAL =================
 class PlanejadorApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -94,13 +140,13 @@ class PlanejadorApp(tk.Tk):
         self.servico = ServicoAulas(self.bd)
         
         self.protocol("WM_DELETE_WINDOW", self._encerrar_aplicacao)
-        self._migrar_json_antigo()
         self.aulas_registradas = self.bd.listar_todas()
         
         self.config_dados = self._carregar_configuracoes()
         self.eventos_especiais = self.config_dados.get("eventos", [])
         self.turmas_cadastradas = self.config_dados.get("turmas", ["6º Ano A", "7º Ano A", "8º Ano A", "9º Ano A"])
         self.disciplinas_cadastradas = self.config_dados.get("disciplinas", ["Inglês", "Artes"])
+        self.calendario_padrao = self.config_dados.get("calendario_padrao", "Google Calendar")
         
         self.bncc_cadastrados = self.config_dados.get("bncc", {
             "Inglês": ["EF06LI01", "EF06LI04", "EF07LI01", "EF07LI12", "EF08LI05", "EF09LI02"],
@@ -144,32 +190,6 @@ class PlanejadorApp(tk.Tk):
         style.configure("Treeview.Heading", font=("Inter", 11, "bold"), background="#F1F5F9", foreground="#475569", padding=[5, 10], borderwidth=0)
         style.map("Treeview", background=[('selected', '#DBEAFE')], foreground=[('selected', '#1E3A8A')])
 
-    def _migrar_json_antigo(self):
-        if ARQUIVO_AGENDA_JSON_ANTIGO.exists():
-            try:
-                with ARQUIVO_AGENDA_JSON_ANTIGO.open("r", encoding="utf-8") as f:
-                    dados = json.load(f)
-                for item in dados:
-                    aula = Aula(
-                        id=item.get("id", uuid.uuid4().hex),
-                        data=item.get("data", "2026-01-01"),
-                        turma=item.get("turma", ""),
-                        disciplina=item.get("disciplina", ""),
-                        categoria=item.get("categoria", CategoriaAula.TEORICA.value),
-                        bncc=item.get("bncc", ""),
-                        nome_local=item.get("nome_local", ""),
-                        endereco_local=item.get("endereco_local", ""),
-                        email_local=item.get("email_local", ""),
-                        telefone_local=item.get("telefone_local", ""),
-                        observacoes=item.get("observacoes", ""),
-                        autorizacao_pais=item.get("autorizacao_pais", False)
-                    )
-                    self.bd.salvar(aula)
-                os.rename(ARQUIVO_AGENDA_JSON_ANTIGO, str(ARQUIVO_AGENDA_JSON_ANTIGO) + ".bkp")
-                messagebox.showinfo("Migração Concluída", "JSON migrado pro SQLite!")
-            except Exception as e:
-                logging.error(f"Falha na migração: {e}")
-
     def _criar_interface(self):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=25, pady=25)
@@ -199,6 +219,7 @@ class PlanejadorApp(tk.Tk):
         self.frame_resumo.pack(fill="both", expand=True, pady=20)
         self.lbl_resumo_dia = ttk.Label(self.frame_resumo, text="...", font=self.fonte_padrao, background="#ffffff", wraplength=350, justify="left")
         self.lbl_resumo_dia.pack(anchor="nw")
+        
         frame_lista = ttk.Frame(pane, style="Card.TFrame", padding=20)
         pane.add(frame_lista, weight=3)
         cabecalho_lista = tk.Frame(frame_lista, background="#ffffff")
@@ -215,6 +236,9 @@ class PlanejadorApp(tk.Tk):
         scroll.pack(side="right", fill="y")
         self.tree_aulas.config(yscrollcommand=scroll.set)
         
+        # Vincula a tecla DELETE do teclado à função de exclusão
+        self.tree_aulas.bind("<Delete>", lambda e: self._excluir_aula())
+        
         self.tree_aulas.tag_configure(CategoriaAula.TEORICA.value, foreground="#1E293B")
         self.tree_aulas.tag_configure(CategoriaAula.LUDICA.value, foreground="#8B5CF6")
         self.tree_aulas.tag_configure(CategoriaAula.PRATICA.value, foreground="#059669")
@@ -228,7 +252,7 @@ class PlanejadorApp(tk.Tk):
         ttk.Button(frame_botoes, text="✏️ Editar", command=self._editar_aula_selecionada).pack(side="left", padx=5)
         ttk.Button(frame_botoes, text="🐑 Clonar", style="Warning.TButton", command=self._clonar_aula).pack(side="left", padx=5)
         ttk.Button(frame_botoes, text="🗑️ Excluir", style="Danger.TButton", command=self._excluir_aula).pack(side="left", padx=5)
-        ttk.Button(frame_botoes, text="☁️ Exportar .ics", style="Success.TButton", command=self._exportar_google_calendar).pack(side="right", padx=5)
+        ttk.Button(frame_botoes, text="☁️ Exportar .ics", style="Success.TButton", command=self._exportar_calendario).pack(side="right", padx=5)
         ttk.Button(frame_botoes, text="📄 Gerar PDF", command=self._exportar_pdf).pack(side="right", padx=5)
         self._atualizar_lista()
 
@@ -246,9 +270,12 @@ class PlanejadorApp(tk.Tk):
         form_frame.pack(fill="both", expand=True)
         self.campos = {}
         fonte_input = ("Inter", 11)
+        
         ttk.Label(form_frame, text="Data:", background="#ffffff").grid(row=0, column=0, sticky="w", pady=15)
-        self.campos['data'] = DateEntry(form_frame, width=15, background='#2563EB', foreground='white', borderwidth=0, date_pattern="yyyy-mm-dd", font=fonte_input)
+        # Substituímos o problemático DateEntry nativo pela nossa versão modal
+        self.campos['data'] = SeletorDataModal(form_frame, font=fonte_input, background="#ffffff")
         self.campos['data'].grid(row=0, column=1, sticky="w", padx=15)
+        
         ttk.Label(form_frame, text="Turma:", background="#ffffff").grid(row=1, column=0, sticky="w", pady=15)
         self.campos['turma'] = ttk.Combobox(form_frame, values=self.turmas_cadastradas, width=28, font=fonte_input)
         self.campos['turma'].grid(row=1, column=1, sticky="w", padx=15)
@@ -319,12 +346,20 @@ class PlanejadorApp(tk.Tk):
         self.notebook.select(self.aba_editor)
         messagebox.showinfo("🐑 Modo Clonagem", "Dados copiados! Modifique a data/turma e salve.")
 
-    def _exportar_google_calendar(self):
-        caminho = filedialog.asksaveasfilename(defaultextension=".ics", filetypes=[("Arquivo iCalendar", "*.ics")])
+    def _exportar_calendario(self):
+        ano_atual = date.today().year
+        nome_cal = self.calendario_padrao.replace(" ", "_")
+        nome_padrao = f"Aulas_{ano_atual}_{nome_cal}.ics"
+        
+        caminho = filedialog.asksaveasfilename(
+            initialfile=nome_padrao,
+            defaultextension=".ics", 
+            filetypes=[("Arquivo iCalendar", "*.ics")]
+        )
         if not caminho: return
         try:
             self.servico.exportar_ics(self.aulas_registradas, caminho)
-            messagebox.showinfo("Sucesso", "Arquivo .ics gerado!")
+            messagebox.showinfo("Sucesso", f"Arquivo para {self.calendario_padrao} gerado!")
         except Exception as e: messagebox.showerror("Erro", str(e))
 
     def _salvar_aula(self):
@@ -358,13 +393,27 @@ class PlanejadorApp(tk.Tk):
 
     def _excluir_aula(self):
         sel = self.tree_aulas.selection()
-        if not sel: return
-        aula_id = sel[0]
-        aula = next((a for a in self.aulas_registradas if a.id == aula_id), None)
-        if aula and messagebox.askyesno("Confirmar", f"Excluir aula de {aula.disciplina}?"):
-            self.bd.excluir(aula.id)
-            self._recarregar_dados_banco()
-            self._limpar_form()
+        
+        if not sel:
+            ano_atual = str(date.today().year)
+            if messagebox.askyesno("Limpar Tudo", f"Nenhuma aula foi selecionada.\n\nDeseja EXCLUIR TODAS as aulas do ano letivo de {ano_atual}?\nEsta ação não pode ser desfeita."):
+                self.bd.excluir_por_ano(ano_atual)
+                self._recarregar_dados_banco()
+                self._limpar_form()
+            return
+            
+        if len(sel) == 1:
+            aula_id = sel[0]
+            aula = next((a for a in self.aulas_registradas if a.id == aula_id), None)
+            if aula and messagebox.askyesno("Confirmar", f"Excluir aula de {aula.disciplina}?"):
+                self.bd.excluir(aula.id)
+                self._recarregar_dados_banco()
+                self._limpar_form()
+        else:
+            if messagebox.askyesno("Confirmar", f"Deseja excluir as {len(sel)} aulas selecionadas?"):
+                self.bd.excluir_multiplos(list(sel))
+                self._recarregar_dados_banco()
+                self._limpar_form()
 
     def _construir_aba_grade(self):
         container = ttk.Frame(self.aba_grade, padding=40)
@@ -415,7 +464,7 @@ class PlanejadorApp(tk.Tk):
         ttk.Label(frame_esq, text="Defina os marcos do ano letivo (obrigatório para gerar grades) e os feriados.", font=self.fonte_padrao, background="#ffffff", foreground="#64748B").pack(anchor="w", pady=(0, 20))
         form_evento = tk.Frame(frame_esq, background="#ffffff")
         form_evento.pack(fill="x", pady=(0, 25))
-        self.ev_data = DateEntry(form_evento, width=15, date_pattern="yyyy-mm-dd", font=self.fonte_padrao)
+        self.ev_data = SeletorDataModal(form_evento, font=self.fonte_padrao, background="#ffffff")
         self.ev_data.grid(row=0, column=0, padx=5)
         self.ev_nome = ttk.Entry(form_evento, width=25, font=self.fonte_padrao)
         self.ev_nome.grid(row=0, column=1, padx=5)
@@ -429,8 +478,16 @@ class PlanejadorApp(tk.Tk):
         self.tree_eventos.heading("Tipo", text="Classificação"); self.tree_eventos.column("Tipo", width=150)
         self.tree_eventos.pack(fill="both", expand=True)
         ttk.Button(frame_esq, text="🗑️ Remover Selecionado", style="Danger.TButton", command=self._remover_evento).pack(anchor="e", pady=15)
+        
         frame_dir = ttk.Frame(pane, style="Card.TFrame", padding=25)
         pane.add(frame_dir, weight=1)
+        
+        # Novas opções de Configuração de Calendário Padrão
+        ttk.Label(frame_dir, text="Calendário Padrão de Exportação", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
+        self.combo_calendario_padrao = ttk.Combobox(frame_dir, values=["Google Calendar", "Microsoft Outlook"], state="readonly", font=self.fonte_padrao)
+        self.combo_calendario_padrao.set(self.calendario_padrao)
+        self.combo_calendario_padrao.pack(fill="x", pady=(5, 15))
+        
         ttk.Label(frame_dir, text="Turmas", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
         self.text_turmas = tk.Text(frame_dir, height=5, width=20, font=self.fonte_codigo, relief="solid", borderwidth=1, highlightthickness=0)
         self.text_turmas.pack(fill="both", expand=True, pady=(5, 15))
@@ -473,13 +530,20 @@ class PlanejadorApp(tk.Tk):
     def _salvar_configuracoes(self, silencioso=False):
         self.turmas_cadastradas = [t.strip() for t in self.text_turmas.get("1.0", tk.END).splitlines() if t.strip()]
         self.disciplinas_cadastradas = [d.strip() for d in self.text_disciplinas.get("1.0", tk.END).splitlines() if d.strip()]
+        self.calendario_padrao = self.combo_calendario_padrao.get()
         self.bncc_cadastrados = {}
         for linha in self.text_bncc.get("1.0", tk.END).splitlines():
             if ":" in linha:
                 disc, cods = linha.split(":", 1)
                 self.bncc_cadastrados[disc.strip()] = [c.strip() for c in cods.split(",") if c.strip()]
         with ARQUIVO_CONFIGURACAO.open("w", encoding="utf-8") as f:
-            json.dump({"eventos": self.eventos_especiais, "turmas": self.turmas_cadastradas, "disciplinas": self.disciplinas_cadastradas, "bncc": self.bncc_cadastrados}, f, ensure_ascii=False, indent=2)
+            json.dump({
+                "eventos": self.eventos_especiais, 
+                "turmas": self.turmas_cadastradas, 
+                "disciplinas": self.disciplinas_cadastradas, 
+                "bncc": self.bncc_cadastrados,
+                "calendario_padrao": self.calendario_padrao
+            }, f, ensure_ascii=False, indent=2)
         self._preencher_configuracoes_ui()
         self._marcar_calendario()
         self.campos['turma'].config(values=self.turmas_cadastradas)
@@ -591,7 +655,15 @@ class PlanejadorApp(tk.Tk):
         aula_id = sel[0]
         aula = next((a for a in self.aulas_registradas if a.id == aula_id), None)
         if not aula: return
-        caminho = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf"), ("TXT", "*.txt")])
+        
+        ano_atual = date.today().year
+        nome_padrao = f"Relatório de Aulas do ano de {ano_atual}.pdf"
+        
+        caminho = filedialog.asksaveasfilename(
+            initialfile=nome_padrao,
+            defaultextension=".pdf", 
+            filetypes=[("PDF", "*.pdf"), ("TXT", "*.txt")]
+        )
         if not caminho: return
         self.servico.exportar_pdf(aula, caminho)
         messagebox.showinfo("Exportado", "Relatório exportado!")

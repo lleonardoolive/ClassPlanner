@@ -23,7 +23,6 @@ class RepositorioAulas:
                     autorizacao_pais INTEGER
                 )
             ''')
-            # Migração automática
             try:
                 self.conn.execute('ALTER TABLE aulas ADD COLUMN email_local TEXT DEFAULT ""')
                 self.conn.execute('ALTER TABLE aulas ADD COLUMN telefone_local TEXT DEFAULT ""')
@@ -51,6 +50,16 @@ class RepositorioAulas:
     def excluir(self, aula_id: str):
         with self.conn:
             self.conn.execute('DELETE FROM aulas WHERE id = ?', (aula_id,))
+
+    def excluir_multiplos(self, aulas_ids: list[str]):
+        """Exclui múltiplas aulas de uma só vez."""
+        with self.conn:
+            self.conn.executemany('DELETE FROM aulas WHERE id = ?', [(i,) for i in aulas_ids])
+
+    def excluir_por_ano(self, ano: str):
+        """Limpa todas as aulas cadastradas em um determinado ano letivo."""
+        with self.conn:
+            self.conn.execute("DELETE FROM aulas WHERE data LIKE ?", (f"{ano}-%",))
 
     def fechar_conexao(self):
         self.conn.close()
