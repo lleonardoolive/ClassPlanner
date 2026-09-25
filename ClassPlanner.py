@@ -85,6 +85,12 @@ class RepositorioAulas:
                     autorizacao_pais INTEGER
                 )
             ''')
+            # Migração automática para proteger os dados de bancos já existentes
+            try:
+                self.conn.execute('ALTER TABLE aulas ADD COLUMN email_local TEXT DEFAULT ""')
+                self.conn.execute('ALTER TABLE aulas ADD COLUMN telefone_local TEXT DEFAULT ""')
+            except sqlite3.OperationalError:
+                pass # As colunas já existem
 
     def listar_todas(self) -> list[Aula]:
         cursor = self.conn.execute('SELECT * FROM aulas ORDER BY data ASC')
@@ -93,15 +99,16 @@ class RepositorioAulas:
     def salvar(self, aula: Aula):
         with self.conn:
             self.conn.execute('''
-                INSERT INTO aulas (id, data, turma, disciplina, categoria, bncc, nome_local, endereco_local, observacoes, autorizacao_pais)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO aulas (id, data, turma, disciplina, categoria, bncc, nome_local, endereco_local, email_local, telefone_local, observacoes, autorizacao_pais)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     data=excluded.data, turma=excluded.turma, disciplina=excluded.disciplina,
                     categoria=excluded.categoria, bncc=excluded.bncc, nome_local=excluded.nome_local,
-                    endereco_local=excluded.endereco_local, observacoes=excluded.observacoes,
+                    endereco_local=excluded.endereco_local, email_local=excluded.email_local,
+                    telefone_local=excluded.telefone_local, observacoes=excluded.observacoes,
                     autorizacao_pais=excluded.autorizacao_pais
             ''', (aula.id, aula.data, aula.turma, aula.disciplina, aula.categoria, aula.bncc, 
-                  aula.nome_local, aula.endereco_local, aula.observacoes, int(aula.autorizacao_pais)))
+                  aula.nome_local, aula.endereco_local, aula.email_local, aula.telefone_local, aula.observacoes, int(aula.autorizacao_pais)))
 
     def excluir(self, aula_id: str):
         with self.conn:
@@ -114,19 +121,18 @@ class RepositorioAulas:
         return Aula(
             id=row['id'], data=row['data'], turma=row['turma'], disciplina=row['disciplina'],
             categoria=row['categoria'], bncc=row['bncc'], nome_local=row['nome_local'],
-            endereco_local=row['endereco_local'], observacoes=row['observacoes'],
+            endereco_local=row['endereco_local'], email_local=row['email_local'],
+            telefone_local=row['telefone_local'], observacoes=row['observacoes'],
             autorizacao_pais=bool(row['autorizacao_pais'])
         )
 
 
 # ================= CAMADA SERVICE (LÓGICA DE NEGÓCIO) =================
 class ServicoAulas:
-    """Processa regras de negócios e integrações."""
     def __init__(self, bd: RepositorioAulas):
         self.bd = bd
 
     def marcar_como_avaliacao(self, data_str: str, turma: str, disciplina: str, tipo_avaliacao: str) -> bool:
-        """Busca uma aula existente e a converte em avaliação."""
         aulas = self.bd.listar_todas()
         aula_alvo = next((a for a in aulas if a.data == data_str and a.turma == turma and a.disciplina == disciplina), None)
         
@@ -376,6 +382,8 @@ class PlanejadorApp(tk.Tk):
                         bncc=item.get("bncc", ""),
                         nome_local=item.get("nome_local", ""),
                         endereco_local=item.get("endereco_local", ""),
+                        email_local=item.get("email_local", ""),
+                        telefone_local=item.get("telefone_local", ""),
                         observacoes=item.get("observacoes", ""),
                         autorizacao_pais=item.get("autorizacao_pais", False)
                     )
@@ -491,41 +499,49 @@ class PlanejadorApp(tk.Tk):
         self.campos['data'].grid(row=0, column=1, sticky="w", padx=15)
         
         ttk.Label(form_frame, text="Turma:", background="#ffffff").grid(row=1, column=0, sticky="w", pady=15)
-        self.campos['turma'] = ttk.Combobox(form_frame, values=self.turmas_cadastradas, width=30, font=fonte_input)
+        self.campos['turma'] = ttk.Combobox(form_frame, values=self.turmas_cadastradas, width=28, font=fonte_input)
         self.campos['turma'].grid(row=1, column=1, sticky="w", padx=15)
 
-        ttk.Label(form_frame, text="Disciplina:", background="#ffffff").grid(row=1, column=2, sticky="w", pady=15, padx=(40,0))
-        self.campos['disciplina'] = ttk.Combobox(form_frame, values=self.disciplinas_cadastradas, width=30, font=fonte_input)
+        ttk.Label(form_frame, text="Disciplina:", background="#ffffff").grid(row=1, column=2, sticky="w", pady=15, padx=(20,0))
+        self.campos['disciplina'] = ttk.Combobox(form_frame, values=self.disciplinas_cadastradas, width=28, font=fonte_input)
         self.campos['disciplina'].grid(row=1, column=3, sticky="w", padx=15)
         self.campos['disciplina'].bind("<<ComboboxSelected>>", self._atualizar_dropdown_bncc)
 
         ttk.Label(form_frame, text="Categoria:", background="#ffffff").grid(row=2, column=0, sticky="w", pady=15)
-        self.campos['categoria'] = ttk.Combobox(form_frame, values=[c.value for c in CategoriaAula], state="readonly", width=30, font=fonte_input)
+        self.campos['categoria'] = ttk.Combobox(form_frame, values=[c.value for c in CategoriaAula], state="readonly", width=28, font=fonte_input)
         self.campos['categoria'].set(CategoriaAula.TEORICA.value)
         self.campos['categoria'].grid(row=2, column=1, sticky="w", padx=15)
         self.campos['categoria'].bind("<<ComboboxSelected>>", self._toggle_campos_passeio)
 
-        ttk.Label(form_frame, text="Cód. BNCC:", background="#ffffff").grid(row=2, column=2, sticky="w", pady=15, padx=(40,0))
-        self.campos['bncc'] = ttk.Combobox(form_frame, values=[], width=30, font=fonte_input)
+        ttk.Label(form_frame, text="Cód. BNCC:", background="#ffffff").grid(row=2, column=2, sticky="w", pady=15, padx=(20,0))
+        self.campos['bncc'] = ttk.Combobox(form_frame, values=[], width=28, font=fonte_input)
         self.campos['bncc'].grid(row=2, column=3, sticky="w", padx=15)
 
         self.frame_passeio = ttk.Frame(form_frame, style="Card.TFrame", padding=15)
-        self.frame_passeio.grid(row=3, column=0, columnspan=4, sticky="ew", pady=20)
+        self.frame_passeio.grid(row=3, column=0, columnspan=4, sticky="ew", pady=15)
         self.frame_passeio.grid_remove()
 
         ttk.Label(self.frame_passeio, text="Local:", background="#ffffff").grid(row=0, column=0, sticky="w")
-        self.campos['nome_local'] = ttk.Entry(self.frame_passeio, width=30, font=fonte_input)
+        self.campos['nome_local'] = ttk.Entry(self.frame_passeio, width=28, font=fonte_input)
         self.campos['nome_local'].grid(row=0, column=1, padx=15)
         
         ttk.Label(self.frame_passeio, text="Endereço:", background="#ffffff").grid(row=0, column=2, sticky="w", padx=(20,0))
-        self.campos['endereco_local'] = ttk.Entry(self.frame_passeio, width=40, font=fonte_input)
+        self.campos['endereco_local'] = ttk.Entry(self.frame_passeio, width=38, font=fonte_input)
         self.campos['endereco_local'].grid(row=0, column=3, padx=15)
         
+        ttk.Label(self.frame_passeio, text="E-mail:", background="#ffffff").grid(row=1, column=0, sticky="w", pady=10)
+        self.campos['email_local'] = ttk.Entry(self.frame_passeio, width=28, font=fonte_input)
+        self.campos['email_local'].grid(row=1, column=1, padx=15, pady=10)
+        
+        ttk.Label(self.frame_passeio, text="Telefone:", background="#ffffff").grid(row=1, column=2, sticky="w", padx=(20,0), pady=10)
+        self.campos['telefone_local'] = ttk.Entry(self.frame_passeio, width=28, font=fonte_input)
+        self.campos['telefone_local'].grid(row=1, column=3, sticky="w", padx=15, pady=10)
+        
         self.campos['autorizacao_pais'] = tk.BooleanVar()
-        ttk.Checkbutton(self.frame_passeio, text="Exige Autorização", variable=self.campos['autorizacao_pais']).grid(row=1, column=0, columnspan=4, sticky="w", pady=(15,0))
+        ttk.Checkbutton(self.frame_passeio, text="Exige Autorização", variable=self.campos['autorizacao_pais']).grid(row=2, column=0, columnspan=4, sticky="w", pady=(10,0))
 
         ttk.Label(form_frame, text="Conteúdo / Plano:", background="#ffffff").grid(row=4, column=0, sticky="nw", pady=15)
-        self.obs_text = tk.Text(form_frame, height=10, width=80, font=self.fonte_padrao, relief="flat", borderwidth=1, highlightthickness=1, highlightbackground="#E2E8F0")
+        self.obs_text = tk.Text(form_frame, height=8, width=80, font=self.fonte_padrao, relief="flat", borderwidth=1, highlightthickness=1, highlightbackground="#E2E8F0")
         self.obs_text.grid(row=4, column=1, columnspan=3, sticky="w", padx=15, pady=15)
 
         btn_frame = ttk.Frame(container)
@@ -546,10 +562,8 @@ class PlanejadorApp(tk.Tk):
             messagebox.showwarning("Aviso", "Selecione uma aula na lista primeiro.")
             return
             
-        item = self.tree_aulas.item(sel[0])
-        data_str, turma, disciplina = item['values'][0], item['values'][1], item['values'][2]
-        
-        aula_original = next((a for a in self.aulas_registradas if a.data == datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d") and a.turma == turma and a.disciplina == disciplina), None)
+        aula_id = sel[0]
+        aula_original = next((a for a in self.aulas_registradas if a.id == aula_id), None)
         if not aula_original: return
         
         self.aula_em_edicao = None
@@ -562,6 +576,8 @@ class PlanejadorApp(tk.Tk):
         
         self.campos['nome_local'].delete(0, tk.END); self.campos['nome_local'].insert(0, aula_original.nome_local)
         self.campos['endereco_local'].delete(0, tk.END); self.campos['endereco_local'].insert(0, aula_original.endereco_local)
+        self.campos['email_local'].delete(0, tk.END); self.campos['email_local'].insert(0, aula_original.email_local)
+        self.campos['telefone_local'].delete(0, tk.END); self.campos['telefone_local'].insert(0, aula_original.telefone_local)
         self.campos['autorizacao_pais'].set(aula_original.autorizacao_pais)
         
         self.obs_text.delete("1.0", tk.END); self.obs_text.insert("1.0", aula_original.observacoes)
@@ -587,6 +603,8 @@ class PlanejadorApp(tk.Tk):
             bncc=self.campos['bncc'].get().strip(),
             nome_local=self.campos['nome_local'].get().strip(),
             endereco_local=self.campos['endereco_local'].get().strip(),
+            email_local=self.campos['email_local'].get().strip(),
+            telefone_local=self.campos['telefone_local'].get().strip(),
             observacoes=self.obs_text.get("1.0", tk.END).strip(),
             autorizacao_pais=self.campos['autorizacao_pais'].get()
         )
@@ -609,9 +627,9 @@ class PlanejadorApp(tk.Tk):
     def _excluir_aula(self):
         sel = self.tree_aulas.selection()
         if not sel: return
-        item = self.tree_aulas.item(sel[0])
-        data_str, turma, disciplina = item['values'][0], item['values'][1], item['values'][2]
-        aula = next((a for a in self.aulas_registradas if a.data == datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d") and a.turma == turma and a.disciplina == disciplina), None)
+        
+        aula_id = sel[0]
+        aula = next((a for a in self.aulas_registradas if a.id == aula_id), None)
         
         if aula and messagebox.askyesno("Confirmar", f"Excluir aula de {aula.disciplina}?"):
             self.bd.excluir(aula.id)
@@ -814,7 +832,8 @@ class PlanejadorApp(tk.Tk):
             if self.filtro_mes_atual.get() and not aula.data.startswith(mes_atual): continue
             try:
                 d_br = datetime.strptime(aula.data, "%Y-%m-%d").strftime("%d/%m/%Y")
-                self.tree_aulas.insert("", tk.END, values=(d_br, aula.turma, aula.disciplina, aula.categoria, aula.bncc), tags=(aula.categoria,))
+                # CRÍTICO: Utiliza o aula.id como identificador (iid) interno do item na tabela
+                self.tree_aulas.insert("", tk.END, iid=aula.id, values=(d_br, aula.turma, aula.disciplina, aula.categoria, aula.bncc), tags=(aula.categoria,))
             except ValueError: pass
 
     def _nova_aula_pelo_calendario(self):
@@ -825,10 +844,10 @@ class PlanejadorApp(tk.Tk):
     def _editar_aula_selecionada(self):
         sel = self.tree_aulas.selection()
         if not sel: return
-        item = self.tree_aulas.item(sel[0])
-        data_str, turma, disciplina = item['values'][0], item['values'][1], item['values'][2]
         
-        self.aula_em_edicao = next((a for a in self.aulas_registradas if a.data == datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d") and a.turma == turma and a.disciplina == disciplina), None)
+        aula_id = sel[0]
+        self.aula_em_edicao = next((a for a in self.aulas_registradas if a.id == aula_id), None)
+        
         if not self.aula_em_edicao: return
         
         self.campos['data'].set_date(datetime.strptime(self.aula_em_edicao.data, "%Y-%m-%d").date())
@@ -837,9 +856,13 @@ class PlanejadorApp(tk.Tk):
         self._atualizar_dropdown_bncc()
         self.campos['bncc'].set(self.aula_em_edicao.bncc)
         self.campos['categoria'].set(self.aula_em_edicao.categoria)
+        
         self.campos['nome_local'].delete(0, tk.END); self.campos['nome_local'].insert(0, self.aula_em_edicao.nome_local)
         self.campos['endereco_local'].delete(0, tk.END); self.campos['endereco_local'].insert(0, self.aula_em_edicao.endereco_local)
+        self.campos['email_local'].delete(0, tk.END); self.campos['email_local'].insert(0, self.aula_em_edicao.email_local)
+        self.campos['telefone_local'].delete(0, tk.END); self.campos['telefone_local'].insert(0, self.aula_em_edicao.telefone_local)
         self.campos['autorizacao_pais'].set(self.aula_em_edicao.autorizacao_pais)
+        
         self.obs_text.delete("1.0", tk.END); self.obs_text.insert("1.0", self.aula_em_edicao.observacoes)
         self._toggle_campos_passeio()
         self.notebook.select(self.aba_editor)
@@ -853,8 +876,11 @@ class PlanejadorApp(tk.Tk):
         self.campos['data'].set_date(date.today())
         self.campos['turma'].set(''); self.campos['disciplina'].set(''); self.campos['bncc'].set('')
         self.campos['categoria'].set(CategoriaAula.TEORICA.value)
+        
         self.campos['nome_local'].delete(0, tk.END); self.campos['endereco_local'].delete(0, tk.END)
+        self.campos['email_local'].delete(0, tk.END); self.campos['telefone_local'].delete(0, tk.END)
         self.campos['autorizacao_pais'].set(False)
+        
         self.obs_text.delete("1.0", tk.END)
         self._toggle_campos_passeio()
 
@@ -865,10 +891,9 @@ class PlanejadorApp(tk.Tk):
     def _exportar_pdf(self):
         sel = self.tree_aulas.selection()
         if not sel: return
-        item = self.tree_aulas.item(sel[0])
-        data_str, turma, disciplina = item['values'][0], item['values'][1], item['values'][2]
         
-        aula = next((a for a in self.aulas_registradas if a.data == datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d") and a.turma == turma and a.disciplina == disciplina), None)
+        aula_id = sel[0]
+        aula = next((a for a in self.aulas_registradas if a.id == aula_id), None)
         if not aula: return
         
         caminho = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf"), ("TXT", "*.txt")])
