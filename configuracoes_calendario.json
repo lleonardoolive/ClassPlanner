@@ -1,11 +1,5 @@
 {
-  "eventos": [
-    {
-      "data": "2026-02-03",
-      "nome": "Início do Ano Letivo",
-      "tipo": "Início do Ano Letivo"
-    }
-  ],
+  "eventos": [],
   "turmas": [
     "6º Ano A",
     "7º Ano A",
