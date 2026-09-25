@@ -1,0 +1,21 @@
+{
+  "inicio_ano": "2026-08-03",
+  "fim_ano": "2026-12-18",
+  "eventos": [
+    {
+      "data": "2026-11-02",
+      "nome": "Finados",
+      "tipo": "Feriado"
+    }
+  ],
+  "turmas": [
+    "6º Ano A",
+    "7º Ano A",
+    "8º Ano A",
+    "9º Ano A"
+  ],
+  "disciplinas": [
+    "Inglês",
+    "Artes"
+  ]
+}
