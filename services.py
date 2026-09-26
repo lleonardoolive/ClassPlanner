@@ -1,6 +1,8 @@
 import logging
 import textwrap
 import uuid
+import webbrowser
+import urllib.parse
 from datetime import datetime, timedelta
 from models import Aula, CategoriaAula, TipoEvento
 from database import RepositorioAulas
@@ -23,47 +25,45 @@ class ServicoAulas:
         self.bd.salvar(aula_alvo)
         return True
 
-    def exportar_ics(self, aulas: list[Aula], caminho: str):
-        if not aulas:
-            raise ValueError("Não há aulas no banco para exportar.")
-            
-        def _escapar_ics(texto: str) -> str:
-            if not texto: return ""
-            return texto.replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,').replace('\n', '\\n')
-            
-        linhas = [
-            "BEGIN:VCALENDAR",
-            "VERSION:2.0",
-            "PRODID:-//Planejador de Aulas by Leonardo O.//BR",
-            "CALSCALE:GREGORIAN"
-        ]
+    def exportar_para_navegador(self, aula: Aula, provedor: str):
+        """Gera um link preenchido e abre diretamente no navegador do usuário."""
+        dt_inicio = datetime.strptime(aula.data, "%Y-%m-%d")
+        dt_fim = dt_inicio + timedelta(hours=1) # Aula padrão de 1 hora
         
-        for aula in aulas:
-            try:
-                data_obj = datetime.strptime(aula.data, "%Y-%m-%d")
-                dt_str = data_obj.strftime("%Y%m%d")
-                linhas.append("BEGIN:VEVENT")
-                linhas.append(f"UID:{aula.id}@planejador.com")
-                linhas.append(f"DTSTART;TZID=America/Sao_Paulo:{dt_str}T080000")
-                linhas.append(f"DTEND;TZID=America/Sao_Paulo:{dt_str}T090000")
-                
-                titulo = f"{aula.disciplina} ({aula.turma}) - {aula.categoria}"
-                linhas.append(f"SUMMARY:{_escapar_ics(titulo)}")
-                
-                desc = f"BNCC: {aula.bncc}\n\n{aula.observacoes}"
-                linhas.append(f"DESCRIPTION:{_escapar_ics(desc)}")
-                
-                if aula.categoria == CategoriaAula.PASSEIO_CULTURA.value:
-                    loc = f"{aula.endereco_local} - {aula.nome_local}"
-                    linhas.append(f"LOCATION:{_escapar_ics(loc)}")
-                    
-                linhas.append("END:VEVENT")
-            except ValueError as e:
-                logging.warning(f"Data inválida ignorada na geração do ICS ({aula.data}): {e}")
-                
-        linhas.append("END:VCALENDAR")
-        with open(caminho, "w", encoding="utf-8") as f:
-            f.write("\n".join(linhas))
+        titulo = f"{aula.disciplina} ({aula.turma}) - {aula.categoria}"
+        desc = f"BNCC: {aula.bncc}\n\n{aula.observacoes}"
+        local = f"{aula.endereco_local} - {aula.nome_local}".strip(" -")
+        
+        if provedor == "Google Calendar":
+            fmt_inicio = dt_inicio.strftime("%Y%m%dT080000")
+            fmt_fim = dt_fim.strftime("%Y%m%dT090000")
+            params = {
+                "action": "TEMPLATE",
+                "text": titulo,
+                "dates": f"{fmt_inicio}/{fmt_fim}",
+                "details": desc,
+                "location": local,
+                "ctz": "America/Sao_Paulo"
+            }
+            url = "https://calendar.google.com/calendar/render?" + urllib.parse.urlencode(params)
+            
+        elif provedor == "Microsoft Outlook":
+            fmt_inicio = dt_inicio.strftime("%Y-%m-%dT08:00:00")
+            fmt_fim = dt_fim.strftime("%Y-%m-%dT09:00:00")
+            params = {
+                "path": "/calendar/action/compose",
+                "rru": "addevent",
+                "subject": titulo,
+                "startdt": fmt_inicio,
+                "enddt": fmt_fim,
+                "body": desc,
+                "location": local
+            }
+            url = "https://outlook.live.com/calendar/0/deeplink/compose?" + urllib.parse.urlencode(params)
+        else:
+            raise ValueError("Provedor de calendário não suportado.")
+            
+        webbrowser.open(url)
 
     def gerar_grade_automatica(self, turma: str, disc: str, dias_selecionados: list[int], eventos_especiais: list[dict]) -> tuple[int, str]:
         inicio_ano = next((e["data"] for e in eventos_especiais if e["tipo"] == TipoEvento.INICIO_ANO.value), None)

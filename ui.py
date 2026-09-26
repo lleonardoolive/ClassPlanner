@@ -47,7 +47,7 @@ class SeletorDataModal(tk.Frame):
                        headersbackground="#F1F5F9", headersforeground="#475569", 
                        selectbackground="#2563EB", selectforeground="white",
                        normalbackground="white", weekendbackground="#F8FAFC",
-                       showweeknumbers=False)
+                       showweeknumbers=False, locale="pt_BR")
         try:
             cal.selection_set(self.get_date())
         except ValueError:
@@ -86,7 +86,7 @@ class JanelaAvaliacoes(tk.Toplevel):
         self.cal = Calendar(self, selectmode="day", date_pattern="yyyy-mm-dd", font=("Inter", 10),
                             background="white", foreground="#1E293B", bordercolor="#E2E8F0",
                             headersbackground="#F1F5F9", headersforeground="#475569", 
-                            selectbackground="#DC2626", selectforeground="white") 
+                            selectbackground="#DC2626", selectforeground="white", locale="pt_BR") 
         self.cal.pack(fill="x", padx=30, pady=10)
         
         frame_controles = ttk.Frame(self, style="Card.TFrame", padding=15)
@@ -148,10 +148,7 @@ class PlanejadorApp(tk.Tk):
         self.disciplinas_cadastradas = self.config_dados.get("disciplinas", ["Inglês", "Artes"])
         self.calendario_padrao = self.config_dados.get("calendario_padrao", "Google Calendar")
         
-        self.bncc_cadastrados = self.config_dados.get("bncc", {
-            "Inglês": ["EF06LI01", "EF06LI04", "EF07LI01", "EF07LI12", "EF08LI05", "EF09LI02"],
-            "Artes": ["EF69AR01 (Visuais)", "EF69AR04 (Visuais)", "EF69AR09 (Dança)", "EF69AR16 (Música)", "EF69AR24 (Teatro)"]
-        })
+        self.bncc_cadastrados = self.config_dados.get("bncc", {})
         
         self.aula_em_edicao = None
         self.filtro_mes_atual = tk.BooleanVar(value=True)
@@ -205,16 +202,19 @@ class PlanejadorApp(tk.Tk):
     def _construir_aba_agenda(self):
         pane = ttk.PanedWindow(self.aba_agenda, orient=tk.HORIZONTAL)
         pane.pack(fill="both", expand=True, pady=15)
+        
         frame_cal = ttk.Frame(pane, style="Card.TFrame", padding=20)
         pane.add(frame_cal, weight=1)
         ttk.Label(frame_cal, text="Selecione uma data", font=self.fonte_titulo, background="#ffffff").pack(anchor="w", pady=(0,15))
+        
         self.cal = Calendar(frame_cal, selectmode="day", date_pattern="yyyy-mm-dd", font=self.fonte_padrao, 
                             background="white", foreground="#1E293B", bordercolor="#E2E8F0",
                             headersbackground="#F1F5F9", headersforeground="#475569", 
                             selectbackground="#2563EB", selectforeground="white",
-                            normalbackground="white", weekendbackground="#F8FAFC", showweeknumbers=False)
+                            normalbackground="white", weekendbackground="#F8FAFC", showweeknumbers=False, locale="pt_BR")
         self.cal.pack(fill="x", expand=False)
         self.cal.bind("<<CalendarSelected>>", self._ao_selecionar_data_calendario)
+        
         self.frame_resumo = ttk.LabelFrame(frame_cal, text="Detalhes do Dia", padding=15)
         self.frame_resumo.pack(fill="both", expand=True, pady=20)
         self.lbl_resumo_dia = ttk.Label(self.frame_resumo, text="...", font=self.fonte_padrao, background="#ffffff", wraplength=350, justify="left")
@@ -224,18 +224,32 @@ class PlanejadorApp(tk.Tk):
         pane.add(frame_lista, weight=3)
         cabecalho_lista = tk.Frame(frame_lista, background="#ffffff")
         cabecalho_lista.pack(fill="x", pady=(0,15))
+        
         ttk.Label(cabecalho_lista, text="Aulas Planejadas", font=self.fonte_titulo, background="#ffffff").pack(side="left")
         ttk.Checkbutton(cabecalho_lista, text="Mostrar apenas este mês", variable=self.filtro_mes_atual, command=self._atualizar_lista, style="TCheckbutton").pack(side="right")
+        
         self.tree_aulas = ttk.Treeview(frame_lista, columns=("Data", "Turma", "Disciplina", "Categoria", "BNCC"), show="headings")
         colunas = [("Data", 100), ("Turma", 120), ("Disciplina", 150), ("Categoria", 150), ("BNCC", 120)]
         for col, width in colunas:
             self.tree_aulas.heading(col, text=col, command=lambda c=col: self._ordenar_treeview(c, False))
             self.tree_aulas.column(col, width=width, anchor="center" if col == "Data" else "w")
         self.tree_aulas.pack(fill="both", expand=True, side="left")
+        
         scroll = ttk.Scrollbar(frame_lista, orient="vertical", command=self.tree_aulas.yview)
         scroll.pack(side="right", fill="y")
         self.tree_aulas.config(yscrollcommand=scroll.set)
         
+        def _desmarcar_ao_clicar_fora(event):
+            if event.widget == self.tree_aulas:
+                if not self.tree_aulas.identify_row(event.y):
+                    self.tree_aulas.selection_remove(self.tree_aulas.selection())
+            else:
+                self.tree_aulas.selection_remove(self.tree_aulas.selection())
+                
+        self.tree_aulas.bind("<Button-1>", _desmarcar_ao_clicar_fora)
+        frame_lista.bind("<Button-1>", _desmarcar_ao_clicar_fora)
+        cabecalho_lista.bind("<Button-1>", _desmarcar_ao_clicar_fora)
+        self.aba_agenda.bind("<Button-1>", _desmarcar_ao_clicar_fora)
         self.tree_aulas.bind("<Delete>", lambda e: self._excluir_aula())
         
         self.tree_aulas.tag_configure(CategoriaAula.TEORICA.value, foreground="#1E293B")
@@ -251,7 +265,7 @@ class PlanejadorApp(tk.Tk):
         ttk.Button(frame_botoes, text="✏️ Editar", command=self._editar_aula_selecionada).pack(side="left", padx=5)
         ttk.Button(frame_botoes, text="🐑 Clonar", style="Warning.TButton", command=self._clonar_aula).pack(side="left", padx=5)
         ttk.Button(frame_botoes, text="🗑️ Excluir", style="Danger.TButton", command=self._excluir_aula).pack(side="left", padx=5)
-        ttk.Button(frame_botoes, text="☁️ Exportar .ics", style="Success.TButton", command=self._exportar_calendario).pack(side="right", padx=5)
+        ttk.Button(frame_botoes, text="☁️ Exportar Web", style="Success.TButton", command=self._exportar_calendario).pack(side="right", padx=5)
         ttk.Button(frame_botoes, text="📄 Gerar PDF", command=self._exportar_pdf).pack(side="right", padx=5)
         self._atualizar_lista()
 
@@ -277,21 +291,34 @@ class PlanejadorApp(tk.Tk):
         ttk.Label(form_frame, text="Turma:", background="#ffffff").grid(row=1, column=0, sticky="w", pady=15)
         self.campos['turma'] = ttk.Combobox(form_frame, values=self.turmas_cadastradas, width=28, font=fonte_input)
         self.campos['turma'].grid(row=1, column=1, sticky="w", padx=15)
+        
         ttk.Label(form_frame, text="Disciplina:", background="#ffffff").grid(row=1, column=2, sticky="w", pady=15, padx=(20,0))
         self.campos['disciplina'] = ttk.Combobox(form_frame, values=self.disciplinas_cadastradas, width=28, font=fonte_input)
         self.campos['disciplina'].grid(row=1, column=3, sticky="w", padx=15)
         self.campos['disciplina'].bind("<<ComboboxSelected>>", self._atualizar_dropdown_bncc)
+        
         ttk.Label(form_frame, text="Categoria:", background="#ffffff").grid(row=2, column=0, sticky="w", pady=15)
         self.campos['categoria'] = ttk.Combobox(form_frame, values=[c.value for c in CategoriaAula], state="readonly", width=28, font=fonte_input)
         self.campos['categoria'].set(CategoriaAula.TEORICA.value)
         self.campos['categoria'].grid(row=2, column=1, sticky="w", padx=15)
         self.campos['categoria'].bind("<<ComboboxSelected>>", self._toggle_campos_passeio)
-        ttk.Label(form_frame, text="Cód. BNCC:", background="#ffffff").grid(row=2, column=2, sticky="w", pady=15, padx=(20,0))
-        self.campos['bncc'] = ttk.Combobox(form_frame, values=[], width=28, font=fonte_input)
-        self.campos['bncc'].grid(row=2, column=3, sticky="w", padx=15)
+        
+        # Múltipla Seleção BNCC
+        ttk.Label(form_frame, text="Códigos BNCC:", background="#ffffff").grid(row=2, column=2, sticky="nw", pady=15, padx=(20,0))
+        self.frame_bncc = tk.Frame(form_frame, background="#ffffff")
+        self.frame_bncc.grid(row=2, column=3, sticky="w", padx=15, pady=15)
+        
+        self.campos['bncc'] = tk.Listbox(self.frame_bncc, selectmode=tk.MULTIPLE, width=32, height=4, font=fonte_input, exportselection=False, relief="flat", highlightthickness=1, highlightbackground="#E2E8F0")
+        self.campos['bncc'].pack(side="left", fill="both", expand=True)
+        
+        scroll_bncc = ttk.Scrollbar(self.frame_bncc, orient="vertical", command=self.campos['bncc'].yview)
+        scroll_bncc.pack(side="right", fill="y")
+        self.campos['bncc'].config(yscrollcommand=scroll_bncc.set)
+        
         self.frame_passeio = ttk.Frame(form_frame, style="Card.TFrame", padding=15)
         self.frame_passeio.grid(row=3, column=0, columnspan=4, sticky="ew", pady=15)
         self.frame_passeio.grid_remove()
+        
         ttk.Label(self.frame_passeio, text="Local:", background="#ffffff").grid(row=0, column=0, sticky="w")
         self.campos['nome_local'] = ttk.Entry(self.frame_passeio, width=28, font=fonte_input)
         self.campos['nome_local'].grid(row=0, column=1, padx=15)
@@ -304,11 +331,14 @@ class PlanejadorApp(tk.Tk):
         ttk.Label(self.frame_passeio, text="Telefone:", background="#ffffff").grid(row=1, column=2, sticky="w", padx=(20,0), pady=10)
         self.campos['telefone_local'] = ttk.Entry(self.frame_passeio, width=28, font=fonte_input)
         self.campos['telefone_local'].grid(row=1, column=3, sticky="w", padx=15, pady=10)
+        
         self.campos['autorizacao_pais'] = tk.BooleanVar()
         ttk.Checkbutton(self.frame_passeio, text="Exige Autorização", variable=self.campos['autorizacao_pais']).grid(row=2, column=0, columnspan=4, sticky="w", pady=(10,0))
+        
         ttk.Label(form_frame, text="Conteúdo / Plano:", background="#ffffff").grid(row=4, column=0, sticky="nw", pady=15)
         self.obs_text = tk.Text(form_frame, height=8, width=80, font=self.fonte_padrao, relief="flat", borderwidth=1, highlightthickness=1, highlightbackground="#E2E8F0")
         self.obs_text.grid(row=4, column=1, columnspan=3, sticky="w", padx=15, pady=15)
+        
         btn_frame = ttk.Frame(container)
         btn_frame.pack(fill="x", pady=20)
         ttk.Button(btn_frame, text="💾 Salvar Aula", style="Primary.TButton", command=self._salvar_aula).pack(side="right", padx=5)
@@ -317,7 +347,9 @@ class PlanejadorApp(tk.Tk):
     def _atualizar_dropdown_bncc(self, event=None):
         disc = self.campos['disciplina'].get().strip()
         codigos = self.bncc_cadastrados.get(disc, [])
-        self.campos['bncc'].config(values=codigos)
+        self.campos['bncc'].delete(0, tk.END)
+        for cod in codigos:
+            self.campos['bncc'].insert(tk.END, cod)
 
     def _clonar_aula(self):
         sel = self.tree_aulas.selection()
@@ -331,8 +363,15 @@ class PlanejadorApp(tk.Tk):
         self.campos['data'].set_date(date.today())
         self.campos['turma'].set(aula_original.turma)
         self.campos['disciplina'].set(aula_original.disciplina)
+        
+        # Reconstrói a seleção de múltiplos BNCCs na clonagem
         self._atualizar_dropdown_bncc()
-        self.campos['bncc'].set(aula_original.bncc)
+        self.campos['bncc'].selection_clear(0, tk.END)
+        bncc_salvos = [b.strip() for b in aula_original.bncc.split(" | ") if b.strip()]
+        for i in range(self.campos['bncc'].size()):
+            if self.campos['bncc'].get(i) in bncc_salvos:
+                self.campos['bncc'].selection_set(i)
+                
         self.campos['categoria'].set(aula_original.categoria)
         self.campos['nome_local'].delete(0, tk.END); self.campos['nome_local'].insert(0, aula_original.nome_local)
         self.campos['endereco_local'].delete(0, tk.END); self.campos['endereco_local'].insert(0, aula_original.endereco_local)
@@ -345,29 +384,37 @@ class PlanejadorApp(tk.Tk):
         messagebox.showinfo("🐑 Modo Clonagem", "Dados copiados! Modifique a data/turma e salve.")
 
     def _exportar_calendario(self):
-        ano_atual = date.today().year
-        nome_cal = self.calendario_padrao.replace(" ", "_")
-        nome_padrao = f"Aulas_{ano_atual}_{nome_cal}.ics"
-        
-        caminho = filedialog.asksaveasfilename(
-            initialfile=nome_padrao,
-            defaultextension=".ics", 
-            filetypes=[("Arquivo iCalendar", "*.ics")]
-        )
-        if not caminho: return
-        try:
-            self.servico.exportar_ics(self.aulas_registradas, caminho)
-            messagebox.showinfo("Sucesso", f"Arquivo para {self.calendario_padrao} gerado!")
-        except Exception as e: messagebox.showerror("Erro", str(e))
+        sel = self.tree_aulas.selection()
+        if not sel:
+            messagebox.showwarning("Aviso", "Selecione pelo menos uma aula na lista para exportar.")
+            return
+            
+        if len(sel) > 5:
+            if not messagebox.askyesno("Muitas Aulas", f"Você selecionou {len(sel)} aulas. Isso abrirá {len(sel)} abas simultâneas no seu navegador web. Deseja continuar?"):
+                return
+                
+        for aula_id in sel:
+            aula = next((a for a in self.aulas_registradas if a.id == aula_id), None)
+            if aula:
+                try:
+                    self.servico.exportar_para_navegador(aula, self.calendario_padrao)
+                except Exception as e:
+                    messagebox.showerror("Erro", str(e))
+                    break
 
     def _salvar_aula(self):
+        # Obtém todos os índices selecionados na Listbox e os junta com " | "
+        indices_bncc = self.campos['bncc'].curselection()
+        bncc_selecionados = [self.campos['bncc'].get(i) for i in indices_bncc]
+        bncc_str = " | ".join(bncc_selecionados)
+        
         nova_aula = Aula(
             id=self.aula_em_edicao.id if self.aula_em_edicao else uuid.uuid4().hex,
             data=self.campos['data'].get_date().strftime("%Y-%m-%d"),
             turma=self.campos['turma'].get().strip(),
             disciplina=self.campos['disciplina'].get().strip(),
             categoria=self.campos['categoria'].get(),
-            bncc=self.campos['bncc'].get().strip(),
+            bncc=bncc_str,
             nome_local=self.campos['nome_local'].get().strip(),
             endereco_local=self.campos['endereco_local'].get().strip(),
             email_local=self.campos['email_local'].get().strip(),
@@ -641,8 +688,15 @@ class PlanejadorApp(tk.Tk):
         self.campos['data'].set_date(datetime.strptime(self.aula_em_edicao.data, "%Y-%m-%d").date())
         self.campos['turma'].set(self.aula_em_edicao.turma)
         self.campos['disciplina'].set(self.aula_em_edicao.disciplina)
+        
+        # Reconstrói a seleção de múltiplos BNCCs na edição
         self._atualizar_dropdown_bncc()
-        self.campos['bncc'].set(self.aula_em_edicao.bncc)
+        self.campos['bncc'].selection_clear(0, tk.END)
+        bncc_salvos = [b.strip() for b in self.aula_em_edicao.bncc.split(" | ") if b.strip()]
+        for i in range(self.campos['bncc'].size()):
+            if self.campos['bncc'].get(i) in bncc_salvos:
+                self.campos['bncc'].selection_set(i)
+                
         self.campos['categoria'].set(self.aula_em_edicao.categoria)
         self.campos['nome_local'].delete(0, tk.END); self.campos['nome_local'].insert(0, self.aula_em_edicao.nome_local)
         self.campos['endereco_local'].delete(0, tk.END); self.campos['endereco_local'].insert(0, self.aula_em_edicao.endereco_local)
@@ -660,7 +714,11 @@ class PlanejadorApp(tk.Tk):
     def _limpar_form(self):
         self.aula_em_edicao = None
         self.campos['data'].set_date(date.today())
-        self.campos['turma'].set(''); self.campos['disciplina'].set(''); self.campos['bncc'].set('')
+        self.campos['turma'].set(''); self.campos['disciplina'].set('')
+        
+        # Limpa as múltiplas seleções na Listbox
+        self.campos['bncc'].selection_clear(0, tk.END)
+        
         self.campos['categoria'].set(CategoriaAula.TEORICA.value)
         self.campos['nome_local'].delete(0, tk.END); self.campos['endereco_local'].delete(0, tk.END)
         self.campos['email_local'].delete(0, tk.END); self.campos['telefone_local'].delete(0, tk.END)
