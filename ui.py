@@ -16,8 +16,49 @@ from database import RepositorioAulas
 from services import ServicoAulas
 
 # ================= COMPONENTES CUSTOMIZADOS =================
+
+class JanelaSelecaoBNCC(tk.Toplevel):
+    def __init__(self, parent, disciplina, codigos_disponiveis, codigos_selecionados, callback):
+        super().__init__(parent)
+        self.title(f"Habilidades BNCC - {disciplina}")
+        self.geometry("700x500")
+        self.configure(bg="#F8FAFC")
+        self.resizable(False, False)
+        
+        self.transient(parent)
+        self.grab_set()
+        
+        self.callback = callback
+        
+        ttk.Label(self, text=f"Selecione as habilidades para a disciplina de {disciplina}:", font=("Inter", 12, "bold"), background="#F8FAFC", foreground="#1E293B").pack(pady=(20, 10), padx=20, anchor="w")
+        
+        frame_lista = ttk.Frame(self, style="Card.TFrame", padding=10)
+        frame_lista.pack(fill="both", expand=True, padx=20, pady=5)
+        
+        self.listbox = tk.Listbox(frame_lista, selectmode=tk.MULTIPLE, font=("Inter", 11), relief="flat", highlightthickness=0)
+        self.listbox.pack(side="left", fill="both", expand=True)
+        
+        scroll = ttk.Scrollbar(frame_lista, orient="vertical", command=self.listbox.yview)
+        scroll.pack(side="right", fill="y")
+        self.listbox.config(yscrollcommand=scroll.set)
+        
+        for i, cod in enumerate(codigos_disponiveis):
+            self.listbox.insert(tk.END, cod)
+            if cod in codigos_selecionados:
+                self.listbox.selection_set(i)
+                
+        frame_botoes = tk.Frame(self, bg="#F8FAFC")
+        frame_botoes.pack(fill="x", padx=20, pady=20)
+        
+        ttk.Button(frame_botoes, text="✅ Confirmar Seleção", style="Success.TButton", command=self._confirmar).pack(side="right", padx=5)
+        ttk.Button(frame_botoes, text="❌ Cancelar", command=self.destroy).pack(side="right", padx=5)
+
+    def _confirmar(self):
+        selecionados = [self.listbox.get(i) for i in self.listbox.curselection()]
+        self.callback(selecionados)
+        self.destroy()
+
 class SeletorDataModal(tk.Frame):
-    """Componente à prova de falhas para contornar o bug do DateEntry no Linux"""
     def __init__(self, parent, font, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.data_var = tk.StringVar(value=date.today().strftime("%Y-%m-%d"))
@@ -152,6 +193,7 @@ class PlanejadorApp(tk.Tk):
         
         self.aula_em_edicao = None
         self.filtro_mes_atual = tk.BooleanVar(value=True)
+        self.bncc_selecionados_atual = []
         
         self._criar_interface()
         self._marcar_calendario()
@@ -303,17 +345,24 @@ class PlanejadorApp(tk.Tk):
         self.campos['categoria'].grid(row=2, column=1, sticky="w", padx=15)
         self.campos['categoria'].bind("<<ComboboxSelected>>", self._toggle_campos_passeio)
         
-        # Múltipla Seleção BNCC
+        # --- NOVO SISTEMA BNCC (Compacto) ---
         ttk.Label(form_frame, text="Códigos BNCC:", background="#ffffff").grid(row=2, column=2, sticky="nw", pady=15, padx=(20,0))
         self.frame_bncc = tk.Frame(form_frame, background="#ffffff")
-        self.frame_bncc.grid(row=2, column=3, sticky="w", padx=15, pady=15)
+        self.frame_bncc.grid(row=2, column=3, sticky="nw", padx=15, pady=15)
         
-        self.campos['bncc'] = tk.Listbox(self.frame_bncc, selectmode=tk.MULTIPLE, width=32, height=4, font=fonte_input, exportselection=False, relief="flat", highlightthickness=1, highlightbackground="#E2E8F0")
-        self.campos['bncc'].pack(side="left", fill="both", expand=True)
+        frame_text_bncc = tk.Frame(self.frame_bncc, background="#ffffff")
+        frame_text_bncc.pack(fill="x")
         
-        scroll_bncc = ttk.Scrollbar(self.frame_bncc, orient="vertical", command=self.campos['bncc'].yview)
-        scroll_bncc.pack(side="right", fill="y")
-        self.campos['bncc'].config(yscrollcommand=scroll_bncc.set)
+        self.texto_bncc = tk.Text(frame_text_bncc, height=3, width=28, font=fonte_input, bg="#F1F5F9", state="disabled", relief="flat", highlightthickness=1, highlightbackground="#E2E8F0", wrap="word")
+        self.texto_bncc.pack(side="left", fill="both", expand=True)
+        
+        scroll_bncc = ttk.Scrollbar(frame_text_bncc, orient="vertical", command=self.texto_bncc.yview)
+        scroll_bncc.pack(side="left", fill="y")
+        self.texto_bncc.config(yscrollcommand=scroll_bncc.set)
+        
+        ttk.Button(self.frame_bncc, text="🔍 Selecionar Habilidades", command=self._abrir_modal_bncc).pack(fill="x", pady=(5,0))
+        self._atualizar_texto_bncc()
+        # ------------------------------------
         
         self.frame_passeio = ttk.Frame(form_frame, style="Card.TFrame", padding=15)
         self.frame_passeio.grid(row=3, column=0, columnspan=4, sticky="ew", pady=15)
@@ -344,12 +393,36 @@ class PlanejadorApp(tk.Tk):
         ttk.Button(btn_frame, text="💾 Salvar Aula", style="Primary.TButton", command=self._salvar_aula).pack(side="right", padx=5)
         ttk.Button(btn_frame, text="❌ Cancelar", command=self._cancelar_edicao).pack(side="left", padx=5)
 
-    def _atualizar_dropdown_bncc(self, event=None):
+    def _abrir_modal_bncc(self):
         disc = self.campos['disciplina'].get().strip()
-        codigos = self.bncc_cadastrados.get(disc, [])
-        self.campos['bncc'].delete(0, tk.END)
-        for cod in codigos:
-            self.campos['bncc'].insert(tk.END, cod)
+        if not disc:
+            messagebox.showwarning("Aviso", "Por favor, selecione uma Disciplina primeiro.")
+            return
+            
+        codigos_disponiveis = self.bncc_cadastrados.get(disc, [])
+        if not codigos_disponiveis:
+            messagebox.showinfo("BNCC", f"Não há códigos cadastrados para a disciplina de {disc}.")
+            return
+
+        def salvar_callback(selecionados):
+            self.bncc_selecionados_atual = selecionados
+            self._atualizar_texto_bncc()
+
+        JanelaSelecaoBNCC(self, disc, codigos_disponiveis, self.bncc_selecionados_atual, salvar_callback)
+
+    def _atualizar_texto_bncc(self):
+        self.texto_bncc.config(state="normal")
+        self.texto_bncc.delete("1.0", tk.END)
+        if self.bncc_selecionados_atual:
+            self.texto_bncc.insert(tk.END, " | ".join(self.bncc_selecionados_atual))
+        else:
+            self.texto_bncc.insert(tk.END, "Nenhuma habilidade selecionada.")
+        self.texto_bncc.config(state="disabled")
+
+    def _atualizar_dropdown_bncc(self, event=None):
+        if event:
+            self.bncc_selecionados_atual = []
+            self._atualizar_texto_bncc()
 
     def _clonar_aula(self):
         sel = self.tree_aulas.selection()
@@ -364,13 +437,8 @@ class PlanejadorApp(tk.Tk):
         self.campos['turma'].set(aula_original.turma)
         self.campos['disciplina'].set(aula_original.disciplina)
         
-        # Reconstrói a seleção de múltiplos BNCCs na clonagem
-        self._atualizar_dropdown_bncc()
-        self.campos['bncc'].selection_clear(0, tk.END)
-        bncc_salvos = [b.strip() for b in aula_original.bncc.split(" | ") if b.strip()]
-        for i in range(self.campos['bncc'].size()):
-            if self.campos['bncc'].get(i) in bncc_salvos:
-                self.campos['bncc'].selection_set(i)
+        self.bncc_selecionados_atual = [b.strip() for b in aula_original.bncc.split(" | ") if b.strip()]
+        self._atualizar_texto_bncc()
                 
         self.campos['categoria'].set(aula_original.categoria)
         self.campos['nome_local'].delete(0, tk.END); self.campos['nome_local'].insert(0, aula_original.nome_local)
@@ -403,10 +471,7 @@ class PlanejadorApp(tk.Tk):
                     break
 
     def _salvar_aula(self):
-        # Obtém todos os índices selecionados na Listbox e os junta com " | "
-        indices_bncc = self.campos['bncc'].curselection()
-        bncc_selecionados = [self.campos['bncc'].get(i) for i in indices_bncc]
-        bncc_str = " | ".join(bncc_selecionados)
+        bncc_str = " | ".join(self.bncc_selecionados_atual)
         
         nova_aula = Aula(
             id=self.aula_em_edicao.id if self.aula_em_edicao else uuid.uuid4().hex,
@@ -689,13 +754,8 @@ class PlanejadorApp(tk.Tk):
         self.campos['turma'].set(self.aula_em_edicao.turma)
         self.campos['disciplina'].set(self.aula_em_edicao.disciplina)
         
-        # Reconstrói a seleção de múltiplos BNCCs na edição
-        self._atualizar_dropdown_bncc()
-        self.campos['bncc'].selection_clear(0, tk.END)
-        bncc_salvos = [b.strip() for b in self.aula_em_edicao.bncc.split(" | ") if b.strip()]
-        for i in range(self.campos['bncc'].size()):
-            if self.campos['bncc'].get(i) in bncc_salvos:
-                self.campos['bncc'].selection_set(i)
+        self.bncc_selecionados_atual = [b.strip() for b in self.aula_em_edicao.bncc.split(" | ") if b.strip()]
+        self._atualizar_texto_bncc()
                 
         self.campos['categoria'].set(self.aula_em_edicao.categoria)
         self.campos['nome_local'].delete(0, tk.END); self.campos['nome_local'].insert(0, self.aula_em_edicao.nome_local)
@@ -716,8 +776,8 @@ class PlanejadorApp(tk.Tk):
         self.campos['data'].set_date(date.today())
         self.campos['turma'].set(''); self.campos['disciplina'].set('')
         
-        # Limpa as múltiplas seleções na Listbox
-        self.campos['bncc'].selection_clear(0, tk.END)
+        self.bncc_selecionados_atual = []
+        self._atualizar_texto_bncc()
         
         self.campos['categoria'].set(CategoriaAula.TEORICA.value)
         self.campos['nome_local'].delete(0, tk.END); self.campos['endereco_local'].delete(0, tk.END)
