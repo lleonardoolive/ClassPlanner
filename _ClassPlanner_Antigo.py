@@ -3,6 +3,7 @@ import os
 import sqlite3
 import uuid
 import logging
+import textwrap
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import Enum
@@ -85,6 +86,12 @@ class RepositorioAulas:
                     autorizacao_pais INTEGER
                 )
             ''')
+            # Migração automática para proteger os dados de bancos já existentes
+            try:
+                self.conn.execute('ALTER TABLE aulas ADD COLUMN email_local TEXT DEFAULT ""')
+                self.conn.execute('ALTER TABLE aulas ADD COLUMN telefone_local TEXT DEFAULT ""')
+            except sqlite3.OperationalError:
+                pass # As colunas já existem
 
     def listar_todas(self) -> list[Aula]:
         cursor = self.conn.execute('SELECT * FROM aulas ORDER BY data ASC')
@@ -93,15 +100,16 @@ class RepositorioAulas:
     def salvar(self, aula: Aula):
         with self.conn:
             self.conn.execute('''
-                INSERT INTO aulas (id, data, turma, disciplina, categoria, bncc, nome_local, endereco_local, observacoes, autorizacao_pais)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO aulas (id, data, turma, disciplina, categoria, bncc, nome_local, endereco_local, email_local, telefone_local, observacoes, autorizacao_pais)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     data=excluded.data, turma=excluded.turma, disciplina=excluded.disciplina,
                     categoria=excluded.categoria, bncc=excluded.bncc, nome_local=excluded.nome_local,
-                    endereco_local=excluded.endereco_local, observacoes=excluded.observacoes,
+                    endereco_local=excluded.endereco_local, email_local=excluded.email_local,
+                    telefone_local=excluded.telefone_local, observacoes=excluded.observacoes,
                     autorizacao_pais=excluded.autorizacao_pais
             ''', (aula.id, aula.data, aula.turma, aula.disciplina, aula.categoria, aula.bncc, 
-                  aula.nome_local, aula.endereco_local, aula.observacoes, int(aula.autorizacao_pais)))
+                  aula.nome_local, aula.endereco_local, aula.email_local, aula.telefone_local, aula.observacoes, int(aula.autorizacao_pais)))
 
     def excluir(self, aula_id: str):
         with self.conn:
@@ -114,19 +122,18 @@ class RepositorioAulas:
         return Aula(
             id=row['id'], data=row['data'], turma=row['turma'], disciplina=row['disciplina'],
             categoria=row['categoria'], bncc=row['bncc'], nome_local=row['nome_local'],
-            endereco_local=row['endereco_local'], observacoes=row['observacoes'],
+            endereco_local=row['endereco_local'], email_local=row['email_local'],
+            telefone_local=row['telefone_local'], observacoes=row['observacoes'],
             autorizacao_pais=bool(row['autorizacao_pais'])
         )
 
 
 # ================= CAMADA SERVICE (LÓGICA DE NEGÓCIO) =================
 class ServicoAulas:
-    """Processa regras de negócios e integrações."""
     def __init__(self, bd: RepositorioAulas):
         self.bd = bd
 
     def marcar_como_avaliacao(self, data_str: str, turma: str, disciplina: str, tipo_avaliacao: str) -> bool:
-        """Busca uma aula existente e a converte em avaliação."""
         aulas = self.bd.listar_todas()
         aula_alvo = next((a for a in aulas if a.data == data_str and a.turma == turma and a.disciplina == disciplina), None)
         
@@ -143,6 +150,11 @@ class ServicoAulas:
     def exportar_ics(self, aulas: list[Aula], caminho: str):
         if not aulas:
             raise ValueError("Não há aulas no banco para exportar.")
+            
+        # Função interna para limpar caracteres que quebram o arquivo .ics
+        def _escapar_ics(texto: str) -> str:
+            if not texto: return ""
+            return texto.replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,').replace('\n', '\\n')
             
         linhas = [
             "BEGIN:VCALENDAR",
@@ -161,13 +173,14 @@ class ServicoAulas:
                 linhas.append(f"DTEND;TZID=America/Sao_Paulo:{dt_str}T090000")
                 
                 titulo = f"{aula.disciplina} ({aula.turma}) - {aula.categoria}"
-                linhas.append(f"SUMMARY:{titulo}")
+                linhas.append(f"SUMMARY:{_escapar_ics(titulo)}")
                 
-                desc = f"BNCC: {aula.bncc}\n\n" + aula.observacoes.replace("\n", "\\n")
-                linhas.append(f"DESCRIPTION:{desc}")
+                desc = f"BNCC: {aula.bncc}\n\n{aula.observacoes}"
+                linhas.append(f"DESCRIPTION:{_escapar_ics(desc)}")
                 
                 if aula.categoria == CategoriaAula.PASSEIO_CULTURA.value:
-                    linhas.append(f"LOCATION:{aula.endereco_local} - {aula.nome_local}")
+                    loc = f"{aula.endereco_local} - {aula.nome_local}"
+                    linhas.append(f"LOCATION:{_escapar_ics(loc)}")
                     
                 linhas.append("END:VEVENT")
             except ValueError as e:
@@ -219,9 +232,24 @@ class ServicoAulas:
             pdf = canvas.Canvas(caminho)
             pdf.drawString(50, 800, f"Plano de Aula: {aula.data}")
             y = 770
-            for linha in texto.splitlines():
-                pdf.drawString(50, y, linha[:100])
-                y -= 20
+            
+            # Novo sistema com quebra automática de linha (Word Wrap)
+            for linha_original in texto.splitlines():
+                # textwrap quebra frases longas em uma lista de linhas menores (máx 80 caracteres)
+                linhas_quebradas = textwrap.wrap(linha_original, width=80) 
+                
+                # Se for uma linha vazia (parágrafo), mantemos o espaçamento
+                if not linhas_quebradas:
+                    y -= 20
+                
+                for linha in linhas_quebradas:
+                    pdf.drawString(50, y, linha)
+                    y -= 20
+                    # Cria nova página se chegar ao final da folha
+                    if y < 50:
+                        pdf.showPage()
+                        y = 800
+                        
             pdf.save()
         except ImportError:
             logging.warning("Biblioteca ReportLab não encontrada. Salvando como .txt.")
@@ -319,6 +347,12 @@ class PlanejadorApp(tk.Tk):
         self.turmas_cadastradas = self.config_dados.get("turmas", ["6º Ano A", "7º Ano A", "8º Ano A", "9º Ano A"])
         self.disciplinas_cadastradas = self.config_dados.get("disciplinas", ["Inglês", "Artes"])
         
+        # Mapeamento Dinâmico de BNCC extraído das configurações (Fase 4)
+        self.bncc_cadastrados = self.config_dados.get("bncc", {
+            "Inglês": ["EF06LI01", "EF06LI04", "EF07LI01", "EF07LI12", "EF08LI05", "EF09LI02"],
+            "Artes": ["EF69AR01 (Visuais)", "EF69AR04 (Visuais)", "EF69AR09 (Dança)", "EF69AR16 (Música)", "EF69AR24 (Teatro)"]
+        })
+        
         self.aula_em_edicao = None
         self.filtro_mes_atual = tk.BooleanVar(value=True)
         
@@ -376,6 +410,8 @@ class PlanejadorApp(tk.Tk):
                         bncc=item.get("bncc", ""),
                         nome_local=item.get("nome_local", ""),
                         endereco_local=item.get("endereco_local", ""),
+                        email_local=item.get("email_local", ""),
+                        telefone_local=item.get("telefone_local", ""),
                         observacoes=item.get("observacoes", ""),
                         autorizacao_pais=item.get("autorizacao_pais", False)
                     )
@@ -491,41 +527,49 @@ class PlanejadorApp(tk.Tk):
         self.campos['data'].grid(row=0, column=1, sticky="w", padx=15)
         
         ttk.Label(form_frame, text="Turma:", background="#ffffff").grid(row=1, column=0, sticky="w", pady=15)
-        self.campos['turma'] = ttk.Combobox(form_frame, values=self.turmas_cadastradas, width=30, font=fonte_input)
+        self.campos['turma'] = ttk.Combobox(form_frame, values=self.turmas_cadastradas, width=28, font=fonte_input)
         self.campos['turma'].grid(row=1, column=1, sticky="w", padx=15)
 
-        ttk.Label(form_frame, text="Disciplina:", background="#ffffff").grid(row=1, column=2, sticky="w", pady=15, padx=(40,0))
-        self.campos['disciplina'] = ttk.Combobox(form_frame, values=self.disciplinas_cadastradas, width=30, font=fonte_input)
+        ttk.Label(form_frame, text="Disciplina:", background="#ffffff").grid(row=1, column=2, sticky="w", pady=15, padx=(20,0))
+        self.campos['disciplina'] = ttk.Combobox(form_frame, values=self.disciplinas_cadastradas, width=28, font=fonte_input)
         self.campos['disciplina'].grid(row=1, column=3, sticky="w", padx=15)
         self.campos['disciplina'].bind("<<ComboboxSelected>>", self._atualizar_dropdown_bncc)
 
         ttk.Label(form_frame, text="Categoria:", background="#ffffff").grid(row=2, column=0, sticky="w", pady=15)
-        self.campos['categoria'] = ttk.Combobox(form_frame, values=[c.value for c in CategoriaAula], state="readonly", width=30, font=fonte_input)
+        self.campos['categoria'] = ttk.Combobox(form_frame, values=[c.value for c in CategoriaAula], state="readonly", width=28, font=fonte_input)
         self.campos['categoria'].set(CategoriaAula.TEORICA.value)
         self.campos['categoria'].grid(row=2, column=1, sticky="w", padx=15)
         self.campos['categoria'].bind("<<ComboboxSelected>>", self._toggle_campos_passeio)
 
-        ttk.Label(form_frame, text="Cód. BNCC:", background="#ffffff").grid(row=2, column=2, sticky="w", pady=15, padx=(40,0))
-        self.campos['bncc'] = ttk.Combobox(form_frame, values=[], width=30, font=fonte_input)
+        ttk.Label(form_frame, text="Cód. BNCC:", background="#ffffff").grid(row=2, column=2, sticky="w", pady=15, padx=(20,0))
+        self.campos['bncc'] = ttk.Combobox(form_frame, values=[], width=28, font=fonte_input)
         self.campos['bncc'].grid(row=2, column=3, sticky="w", padx=15)
 
         self.frame_passeio = ttk.Frame(form_frame, style="Card.TFrame", padding=15)
-        self.frame_passeio.grid(row=3, column=0, columnspan=4, sticky="ew", pady=20)
+        self.frame_passeio.grid(row=3, column=0, columnspan=4, sticky="ew", pady=15)
         self.frame_passeio.grid_remove()
 
         ttk.Label(self.frame_passeio, text="Local:", background="#ffffff").grid(row=0, column=0, sticky="w")
-        self.campos['nome_local'] = ttk.Entry(self.frame_passeio, width=30, font=fonte_input)
+        self.campos['nome_local'] = ttk.Entry(self.frame_passeio, width=28, font=fonte_input)
         self.campos['nome_local'].grid(row=0, column=1, padx=15)
         
         ttk.Label(self.frame_passeio, text="Endereço:", background="#ffffff").grid(row=0, column=2, sticky="w", padx=(20,0))
-        self.campos['endereco_local'] = ttk.Entry(self.frame_passeio, width=40, font=fonte_input)
+        self.campos['endereco_local'] = ttk.Entry(self.frame_passeio, width=38, font=fonte_input)
         self.campos['endereco_local'].grid(row=0, column=3, padx=15)
         
+        ttk.Label(self.frame_passeio, text="E-mail:", background="#ffffff").grid(row=1, column=0, sticky="w", pady=10)
+        self.campos['email_local'] = ttk.Entry(self.frame_passeio, width=28, font=fonte_input)
+        self.campos['email_local'].grid(row=1, column=1, padx=15, pady=10)
+        
+        ttk.Label(self.frame_passeio, text="Telefone:", background="#ffffff").grid(row=1, column=2, sticky="w", padx=(20,0), pady=10)
+        self.campos['telefone_local'] = ttk.Entry(self.frame_passeio, width=28, font=fonte_input)
+        self.campos['telefone_local'].grid(row=1, column=3, sticky="w", padx=15, pady=10)
+        
         self.campos['autorizacao_pais'] = tk.BooleanVar()
-        ttk.Checkbutton(self.frame_passeio, text="Exige Autorização", variable=self.campos['autorizacao_pais']).grid(row=1, column=0, columnspan=4, sticky="w", pady=(15,0))
+        ttk.Checkbutton(self.frame_passeio, text="Exige Autorização", variable=self.campos['autorizacao_pais']).grid(row=2, column=0, columnspan=4, sticky="w", pady=(10,0))
 
         ttk.Label(form_frame, text="Conteúdo / Plano:", background="#ffffff").grid(row=4, column=0, sticky="nw", pady=15)
-        self.obs_text = tk.Text(form_frame, height=10, width=80, font=self.fonte_padrao, relief="flat", borderwidth=1, highlightthickness=1, highlightbackground="#E2E8F0")
+        self.obs_text = tk.Text(form_frame, height=8, width=80, font=self.fonte_padrao, relief="flat", borderwidth=1, highlightthickness=1, highlightbackground="#E2E8F0")
         self.obs_text.grid(row=4, column=1, columnspan=3, sticky="w", padx=15, pady=15)
 
         btn_frame = ttk.Frame(container)
@@ -534,10 +578,8 @@ class PlanejadorApp(tk.Tk):
         ttk.Button(btn_frame, text="❌ Cancelar", command=self._cancelar_edicao).pack(side="left", padx=5)
 
     def _atualizar_dropdown_bncc(self, event=None):
-        disc = self.campos['disciplina'].get().lower()
-        if 'ingl' in disc: codigos = ["EF06LI01", "EF06LI04", "EF07LI01", "EF07LI12", "EF08LI05", "EF09LI02"]
-        elif 'arte' in disc: codigos = ["EF69AR01 (Visuais)", "EF69AR04 (Visuais)", "EF69AR09 (Dança)", "EF69AR16 (Música)", "EF69AR24 (Teatro)"]
-        else: codigos = []
+        disc = self.campos['disciplina'].get().strip()
+        codigos = self.bncc_cadastrados.get(disc, [])
         self.campos['bncc'].config(values=codigos)
 
     def _clonar_aula(self):
@@ -546,10 +588,8 @@ class PlanejadorApp(tk.Tk):
             messagebox.showwarning("Aviso", "Selecione uma aula na lista primeiro.")
             return
             
-        item = self.tree_aulas.item(sel[0])
-        data_str, turma, disciplina = item['values'][0], item['values'][1], item['values'][2]
-        
-        aula_original = next((a for a in self.aulas_registradas if a.data == datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d") and a.turma == turma and a.disciplina == disciplina), None)
+        aula_id = sel[0]
+        aula_original = next((a for a in self.aulas_registradas if a.id == aula_id), None)
         if not aula_original: return
         
         self.aula_em_edicao = None
@@ -562,6 +602,8 @@ class PlanejadorApp(tk.Tk):
         
         self.campos['nome_local'].delete(0, tk.END); self.campos['nome_local'].insert(0, aula_original.nome_local)
         self.campos['endereco_local'].delete(0, tk.END); self.campos['endereco_local'].insert(0, aula_original.endereco_local)
+        self.campos['email_local'].delete(0, tk.END); self.campos['email_local'].insert(0, aula_original.email_local)
+        self.campos['telefone_local'].delete(0, tk.END); self.campos['telefone_local'].insert(0, aula_original.telefone_local)
         self.campos['autorizacao_pais'].set(aula_original.autorizacao_pais)
         
         self.obs_text.delete("1.0", tk.END); self.obs_text.insert("1.0", aula_original.observacoes)
@@ -587,6 +629,8 @@ class PlanejadorApp(tk.Tk):
             bncc=self.campos['bncc'].get().strip(),
             nome_local=self.campos['nome_local'].get().strip(),
             endereco_local=self.campos['endereco_local'].get().strip(),
+            email_local=self.campos['email_local'].get().strip(),
+            telefone_local=self.campos['telefone_local'].get().strip(),
             observacoes=self.obs_text.get("1.0", tk.END).strip(),
             autorizacao_pais=self.campos['autorizacao_pais'].get()
         )
@@ -609,9 +653,9 @@ class PlanejadorApp(tk.Tk):
     def _excluir_aula(self):
         sel = self.tree_aulas.selection()
         if not sel: return
-        item = self.tree_aulas.item(sel[0])
-        data_str, turma, disciplina = item['values'][0], item['values'][1], item['values'][2]
-        aula = next((a for a in self.aulas_registradas if a.data == datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d") and a.turma == turma and a.disciplina == disciplina), None)
+        
+        aula_id = sel[0]
+        aula = next((a for a in self.aulas_registradas if a.id == aula_id), None)
         
         if aula and messagebox.askyesno("Confirmar", f"Excluir aula de {aula.disciplina}?"):
             self.bd.excluir(aula.id)
@@ -710,12 +754,16 @@ class PlanejadorApp(tk.Tk):
         frame_dir = ttk.Frame(pane, style="Card.TFrame", padding=25)
         pane.add(frame_dir, weight=1)
         ttk.Label(frame_dir, text="Turmas", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
-        self.text_turmas = tk.Text(frame_dir, height=8, width=20, font=self.fonte_codigo, relief="solid", borderwidth=1, highlightthickness=0)
-        self.text_turmas.pack(fill="both", expand=True, pady=(10, 20))
+        self.text_turmas = tk.Text(frame_dir, height=5, width=20, font=self.fonte_codigo, relief="solid", borderwidth=1, highlightthickness=0)
+        self.text_turmas.pack(fill="both", expand=True, pady=(5, 15))
         
         ttk.Label(frame_dir, text="Disciplinas", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
-        self.text_disciplinas = tk.Text(frame_dir, height=8, width=20, font=self.fonte_codigo, relief="solid", borderwidth=1, highlightthickness=0)
-        self.text_disciplinas.pack(fill="both", expand=True, pady=(10, 25))
+        self.text_disciplinas = tk.Text(frame_dir, height=5, width=20, font=self.fonte_codigo, relief="solid", borderwidth=1, highlightthickness=0)
+        self.text_disciplinas.pack(fill="both", expand=True, pady=(5, 15))
+        
+        ttk.Label(frame_dir, text="Códigos BNCC (Disc: cod1, cod2)", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
+        self.text_bncc = tk.Text(frame_dir, height=5, width=20, font=self.fonte_codigo, relief="solid", borderwidth=1, highlightthickness=0)
+        self.text_bncc.pack(fill="both", expand=True, pady=(5, 20))
         
         ttk.Button(frame_dir, text="💾 Salvar Configurações", style="Success.TButton", command=self._salvar_configuracoes).pack(fill="x")
         self._preencher_configuracoes_ui()
@@ -741,24 +789,53 @@ class PlanejadorApp(tk.Tk):
         for i in self.tree_eventos.get_children(): self.tree_eventos.delete(i)
         for ev in sorted(self.eventos_especiais, key=lambda x: x["data"]):
             self.tree_eventos.insert("", tk.END, values=(ev["data"], ev["nome"], ev["tipo"]))
+            
         self.text_turmas.delete("1.0", tk.END); self.text_turmas.insert(tk.END, "\n".join(self.turmas_cadastradas))
         self.text_disciplinas.delete("1.0", tk.END); self.text_disciplinas.insert(tk.END, "\n".join(self.disciplinas_cadastradas))
+        
+        # Preenchendo a caixa de texto do BNCC dinamicamente
+        self.text_bncc.delete("1.0", tk.END)
+        linhas_bncc = [f"{disc}: {', '.join(cods)}" for disc, cods in self.bncc_cadastrados.items()]
+        self.text_bncc.insert(tk.END, "\n".join(linhas_bncc))
 
     def _salvar_configuracoes(self, silencioso=False):
         self.turmas_cadastradas = [t.strip() for t in self.text_turmas.get("1.0", tk.END).splitlines() if t.strip()]
         self.disciplinas_cadastradas = [d.strip() for d in self.text_disciplinas.get("1.0", tk.END).splitlines() if d.strip()]
+        
+        # Lendo e processando os novos códigos da BNCC digitados pelo usuário
+        self.bncc_cadastrados = {}
+        for linha in self.text_bncc.get("1.0", tk.END).splitlines():
+            if ":" in linha:
+                disc, cods = linha.split(":", 1)
+                self.bncc_cadastrados[disc.strip()] = [c.strip() for c in cods.split(",") if c.strip()]
+        
         with ARQUIVO_CONFIGURACAO.open("w", encoding="utf-8") as f:
-            json.dump({"eventos": self.eventos_especiais, "turmas": self.turmas_cadastradas, "disciplinas": self.disciplinas_cadastradas}, f, ensure_ascii=False, indent=2)
+            json.dump({
+                "eventos": self.eventos_especiais, 
+                "turmas": self.turmas_cadastradas, 
+                "disciplinas": self.disciplinas_cadastradas,
+                "bncc": self.bncc_cadastrados
+            }, f, ensure_ascii=False, indent=2)
+            
         self._preencher_configuracoes_ui()
         self._marcar_calendario()
         self.campos['turma'].config(values=self.turmas_cadastradas)
         self.campos['disciplina'].config(values=self.disciplinas_cadastradas)
+        
+        # Atualiza a lista BNCC imediatamente se alguma disciplina já estiver selecionada no Editor
+        if self.campos['disciplina'].get():
+            self._atualizar_dropdown_bncc()
+            
         if not silencioso: messagebox.showinfo("Sucesso", "Configurações atualizadas!")
 
     def _carregar_configuracoes(self):
         try:
             with ARQUIVO_CONFIGURACAO.open("r", encoding="utf-8") as f: return json.load(f)
-        except Exception: return {}
+        except FileNotFoundError:
+            return {} 
+        except Exception as e:
+            logging.error(f"Erro ao carregar configurações: {e}")
+            return {}
 
     def _marcar_calendario(self):
         self.cal.calevent_remove("all")
@@ -776,7 +853,8 @@ class PlanejadorApp(tk.Tk):
                 elif ev["tipo"] in [TipoEvento.FERIADO.value, TipoEvento.RECESSO.value]: tag = "feriado"
                 else: tag = "sabado_letivo"
                 self.cal.calevent_create(data_obj, ev["nome"], tags=tag)
-            except ValueError: pass
+            except ValueError as e:
+                logging.warning(f"Aviso de data no evento do calendário ({ev['data']}): {e}")
                 
         dias_aulas = {}
         for aula in self.aulas_registradas:
@@ -787,13 +865,16 @@ class PlanejadorApp(tk.Tk):
         for data_str, tag in dias_aulas.items():
             if not any(e["data"] == data_str for e in self.eventos_especiais if e["tipo"] != TipoEvento.SABADO_LETIVO.value):
                 try: self.cal.calevent_create(date.fromisoformat(data_str), "Aula", tags=tag)
-                except ValueError: pass
+                except ValueError as e: logging.warning(f"Aviso de data da aula no calendário ({data_str}): {e}")
         self._ao_selecionar_data_calendario(None)
 
     def _ao_selecionar_data_calendario(self, event):
         data_str = self.cal.get_date()
-        try: self.campos['data'].set_date(datetime.strptime(data_str, "%Y-%m-%d").date())
-        except ValueError: return
+        try: 
+            self.campos['data'].set_date(datetime.strptime(data_str, "%Y-%m-%d").date())
+        except ValueError as e:
+            logging.warning(f"Data selecionada inválida ({data_str}): {e}")
+            return
         
         resumo = []
         for e in [ev for ev in self.eventos_especiais if ev["data"] == data_str]:
@@ -814,8 +895,9 @@ class PlanejadorApp(tk.Tk):
             if self.filtro_mes_atual.get() and not aula.data.startswith(mes_atual): continue
             try:
                 d_br = datetime.strptime(aula.data, "%Y-%m-%d").strftime("%d/%m/%Y")
-                self.tree_aulas.insert("", tk.END, values=(d_br, aula.turma, aula.disciplina, aula.categoria, aula.bncc), tags=(aula.categoria,))
-            except ValueError: pass
+                self.tree_aulas.insert("", tk.END, iid=aula.id, values=(d_br, aula.turma, aula.disciplina, aula.categoria, aula.bncc), tags=(aula.categoria,))
+            except ValueError as e:
+                logging.warning(f"Erro ao formatar data da aula {aula.id} para listagem ({aula.data}): {e}")
 
     def _nova_aula_pelo_calendario(self):
         self._cancelar_edicao()
@@ -825,10 +907,10 @@ class PlanejadorApp(tk.Tk):
     def _editar_aula_selecionada(self):
         sel = self.tree_aulas.selection()
         if not sel: return
-        item = self.tree_aulas.item(sel[0])
-        data_str, turma, disciplina = item['values'][0], item['values'][1], item['values'][2]
         
-        self.aula_em_edicao = next((a for a in self.aulas_registradas if a.data == datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d") and a.turma == turma and a.disciplina == disciplina), None)
+        aula_id = sel[0]
+        self.aula_em_edicao = next((a for a in self.aulas_registradas if a.id == aula_id), None)
+        
         if not self.aula_em_edicao: return
         
         self.campos['data'].set_date(datetime.strptime(self.aula_em_edicao.data, "%Y-%m-%d").date())
@@ -837,9 +919,13 @@ class PlanejadorApp(tk.Tk):
         self._atualizar_dropdown_bncc()
         self.campos['bncc'].set(self.aula_em_edicao.bncc)
         self.campos['categoria'].set(self.aula_em_edicao.categoria)
+        
         self.campos['nome_local'].delete(0, tk.END); self.campos['nome_local'].insert(0, self.aula_em_edicao.nome_local)
         self.campos['endereco_local'].delete(0, tk.END); self.campos['endereco_local'].insert(0, self.aula_em_edicao.endereco_local)
+        self.campos['email_local'].delete(0, tk.END); self.campos['email_local'].insert(0, self.aula_em_edicao.email_local)
+        self.campos['telefone_local'].delete(0, tk.END); self.campos['telefone_local'].insert(0, self.aula_em_edicao.telefone_local)
         self.campos['autorizacao_pais'].set(self.aula_em_edicao.autorizacao_pais)
+        
         self.obs_text.delete("1.0", tk.END); self.obs_text.insert("1.0", self.aula_em_edicao.observacoes)
         self._toggle_campos_passeio()
         self.notebook.select(self.aba_editor)
@@ -853,8 +939,11 @@ class PlanejadorApp(tk.Tk):
         self.campos['data'].set_date(date.today())
         self.campos['turma'].set(''); self.campos['disciplina'].set(''); self.campos['bncc'].set('')
         self.campos['categoria'].set(CategoriaAula.TEORICA.value)
+        
         self.campos['nome_local'].delete(0, tk.END); self.campos['endereco_local'].delete(0, tk.END)
+        self.campos['email_local'].delete(0, tk.END); self.campos['telefone_local'].delete(0, tk.END)
         self.campos['autorizacao_pais'].set(False)
+        
         self.obs_text.delete("1.0", tk.END)
         self._toggle_campos_passeio()
 
@@ -865,10 +954,9 @@ class PlanejadorApp(tk.Tk):
     def _exportar_pdf(self):
         sel = self.tree_aulas.selection()
         if not sel: return
-        item = self.tree_aulas.item(sel[0])
-        data_str, turma, disciplina = item['values'][0], item['values'][1], item['values'][2]
         
-        aula = next((a for a in self.aulas_registradas if a.data == datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d") and a.turma == turma and a.disciplina == disciplina), None)
+        aula_id = sel[0]
+        aula = next((a for a in self.aulas_registradas if a.id == aula_id), None)
         if not aula: return
         
         caminho = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf"), ("TXT", "*.txt")])
