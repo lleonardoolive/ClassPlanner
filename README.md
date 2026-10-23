@@ -1,2 +1,2 @@
 # ClassPlanner
-Planejador de aulas para facilitar minha rotina como professor de inglês.
+A lightweight desktop application built with Python and SQLite designed to help teachers organize lesson plans, track schedules, and manage curriculum standards locally. Clean, fast, and completely offline.
