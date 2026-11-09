@@ -34,7 +34,7 @@ class ServicoAulas:
         desc = f"BNCC: {aula.bncc}\n\n{aula.observacoes}"
         local = f"{aula.endereco_local} - {aula.nome_local}".strip(" -")
         
-        if provedor == "Google Calendar":
+        if provedor == "Google Calendar": 
             fmt_inicio = dt_inicio.strftime("%Y%m%dT080000")
             fmt_fim = dt_fim.strftime("%Y%m%dT090000")
             params = {

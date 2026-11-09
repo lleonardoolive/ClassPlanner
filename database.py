@@ -61,6 +61,11 @@ class RepositorioAulas:
         with self.conn:
             self.conn.execute("DELETE FROM aulas WHERE data LIKE ?", (f"{ano}-%",))
 
+    def excluir_todas(self):
+        """Limpa todas as aulas cadastradas no banco de dados."""
+        with self.conn:
+            self.conn.execute("DELETE FROM aulas")
+
     def fechar_conexao(self):
         self.conn.close()
 

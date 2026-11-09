@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 import json
 import uuid
 import logging
@@ -269,8 +269,9 @@ class PlanejadorApp(tk.Tk):
         
         ttk.Label(cabecalho_lista, text="Aulas Planejadas", font=self.fonte_titulo, background="#ffffff").pack(side="left")
         ttk.Checkbutton(cabecalho_lista, text="Mostrar apenas este mês", variable=self.filtro_mes_atual, command=self._atualizar_lista, style="TCheckbutton").pack(side="right")
+        ttk.Button(cabecalho_lista, text="Selecionar Tudo", command=self._selecionar_todas_aulas).pack(side="right", padx=(0, 10))
         
-        self.tree_aulas = ttk.Treeview(frame_lista, columns=("Data", "Turma", "Disciplina", "Categoria", "BNCC"), show="headings")
+        self.tree_aulas = ttk.Treeview(frame_lista, columns=("Data", "Turma", "Disciplina", "Categoria", "BNCC"), show="headings", selectmode="extended")
         colunas = [("Data", 100), ("Turma", 120), ("Disciplina", 150), ("Categoria", 150), ("BNCC", 120)]
         for col, width in colunas:
             self.tree_aulas.heading(col, text=col, command=lambda c=col: self._ordenar_treeview(c, False))
@@ -282,17 +283,25 @@ class PlanejadorApp(tk.Tk):
         self.tree_aulas.config(yscrollcommand=scroll.set)
         
         def _desmarcar_ao_clicar_fora(event):
-            if event.widget == self.tree_aulas:
-                if not self.tree_aulas.identify_row(event.y):
-                    self.tree_aulas.selection_remove(self.tree_aulas.selection())
-            else:
+            if event.widget == self.tree_aulas and not self.tree_aulas.identify_row(event.y):
                 self.tree_aulas.selection_remove(self.tree_aulas.selection())
                 
         self.tree_aulas.bind("<Button-1>", _desmarcar_ao_clicar_fora)
-        frame_lista.bind("<Button-1>", _desmarcar_ao_clicar_fora)
-        cabecalho_lista.bind("<Button-1>", _desmarcar_ao_clicar_fora)
-        self.aba_agenda.bind("<Button-1>", _desmarcar_ao_clicar_fora)
+        self.tree_aulas.bind("<Control-a>", self._selecionar_todas_aulas)
+        self.tree_aulas.bind("<Control-A>", self._selecionar_todas_aulas)
         self.tree_aulas.bind("<Delete>", lambda e: self._excluir_aula())
+        
+        menu_contexto = tk.Menu(self.tree_aulas, tearoff=0)
+        menu_contexto.add_command(label="Selecionar Tudo (Ctrl+A)", command=self._selecionar_todas_aulas)
+        menu_contexto.add_command(label="Excluir Selecionadas (Del)", command=self._excluir_aula)
+        
+        def _exibir_menu_contexto(event):
+            item = self.tree_aulas.identify_row(event.y)
+            if item and item not in self.tree_aulas.selection():
+                self.tree_aulas.selection_set(item)
+            menu_contexto.post(event.x_root, event.y_root)
+            
+        self.tree_aulas.bind("<Button-3>", _exibir_menu_contexto)
         
         self.tree_aulas.tag_configure(CategoriaAula.TEORICA.value, foreground="#1E293B")
         self.tree_aulas.tag_configure(CategoriaAula.LUDICA.value, foreground="#8B5CF6")
@@ -307,6 +316,7 @@ class PlanejadorApp(tk.Tk):
         ttk.Button(frame_botoes, text="✏️ Editar", command=self._editar_aula_selecionada).pack(side="left", padx=5)
         ttk.Button(frame_botoes, text="🐑 Clonar", style="Warning.TButton", command=self._clonar_aula).pack(side="left", padx=5)
         ttk.Button(frame_botoes, text="🗑️ Excluir", style="Danger.TButton", command=self._excluir_aula).pack(side="left", padx=5)
+        ttk.Button(frame_botoes, text="🧹 Limpar Ano", command=self._limpar_ano_letivo).pack(side="left", padx=5)
         ttk.Button(frame_botoes, text="☁️ Exportar Web", style="Success.TButton", command=self._exportar_calendario).pack(side="right", padx=5)
         ttk.Button(frame_botoes, text="📄 Gerar PDF", command=self._exportar_pdf).pack(side="right", padx=5)
         self._atualizar_lista()
@@ -501,29 +511,77 @@ class PlanejadorApp(tk.Tk):
         self._atualizar_lista()
         self._marcar_calendario()
 
+    def _selecionar_todas_aulas(self, event=None):
+        todos = self.tree_aulas.get_children()
+        if todos:
+            self.tree_aulas.selection_set(todos)
+        return "break"
+
     def _excluir_aula(self):
         sel = self.tree_aulas.selection()
         
         if not sel:
-            ano_atual = str(date.today().year)
-            if messagebox.askyesno("Limpar Tudo", f"Nenhuma aula foi selecionada.\n\nDeseja EXCLUIR TODAS as aulas do ano letivo de {ano_atual}?\nEsta ação não pode ser desfeita."):
-                self.bd.excluir_por_ano(ano_atual)
-                self._recarregar_dados_banco()
-                self._limpar_form()
+            messagebox.showwarning(
+                "Aviso", 
+                "Nenhuma aula foi selecionada na lista.\n\n"
+                "• Para selecionar várias: segure Shift ou Ctrl e clique nas aulas.\n"
+                "• Para selecionar todas da lista: use Ctrl + A ou o botão 'Selecionar Tudo'.\n"
+                "• Para limpar um ano inteiro: use o botão '🧹 Limpar Ano'."
+            )
             return
             
         if len(sel) == 1:
             aula_id = sel[0]
             aula = next((a for a in self.aulas_registradas if a.id == aula_id), None)
-            if aula and messagebox.askyesno("Confirmar", f"Excluir aula de {aula.disciplina}?"):
-                self.bd.excluir(aula.id)
-                self._recarregar_dados_banco()
-                self._limpar_form()
+            if aula:
+                d_formatada = ""
+                try:
+                    d_formatada = f" ({datetime.strptime(aula.data, '%Y-%m-%d').strftime('%d/%m/%Y')})"
+                except ValueError:
+                    pass
+                if messagebox.askyesno("Confirmar Exclusão", f"Deseja excluir a aula de {aula.disciplina} da turma {aula.turma}{d_formatada}?"):
+                    self.bd.excluir(aula.id)
+                    self._recarregar_dados_banco()
+                    self._limpar_form()
         else:
-            if messagebox.askyesno("Confirmar", f"Deseja excluir as {len(sel)} aulas selecionadas?"):
+            if messagebox.askyesno("Confirmar Exclusão", f"Deseja excluir as {len(sel)} aulas selecionadas?"):
                 self.bd.excluir_multiplos(list(sel))
                 self._recarregar_dados_banco()
                 self._limpar_form()
+
+    def _limpar_ano_letivo(self):
+        if not self.aulas_registradas:
+            messagebox.showinfo("Aviso", "Não há aulas cadastradas no banco de dados.", parent=self)
+            return
+
+        ano_sugerido = self.cal.get_date()[:4]
+        ano = simpledialog.askstring(
+            "Limpar Ano Letivo",
+            "Informe o ano letivo que deseja limpar por completo (ex: 2026):",
+            initialvalue=ano_sugerido,
+            parent=self
+        )
+        if not ano or not ano.strip():
+            return
+
+        ano = ano.strip()
+        aulas_ano = [a for a in self.aulas_registradas if a.data.startswith(f"{ano}-")]
+        if not aulas_ano:
+            messagebox.showinfo("Aviso", f"Nenhuma aula cadastrada foi encontrada no ano letivo de {ano}.", parent=self)
+            return
+
+        confirmacao = messagebox.askyesno(
+            "Confirmar Exclusão em Massa",
+            f"Foram encontradas {len(aulas_ano)} aulas cadastradas no ano de {ano}.\n\n"
+            f"Deseja realmente EXCLUIR TODAS as aulas do ano letivo de {ano}?\n\n"
+            "⚠️ Esta ação apagará o planejamento desse ano e não poderá ser desfeita!",
+            parent=self
+        )
+        if confirmacao:
+            self.bd.excluir_por_ano(ano)
+            self._recarregar_dados_banco()
+            self._limpar_form()
+            messagebox.showinfo("Sucesso", f"{len(aulas_ano)} aulas do ano letivo de {ano} foram excluídas.", parent=self)
 
     def _construir_aba_grade(self):
         container = ttk.Frame(self.aba_grade, padding=40)
