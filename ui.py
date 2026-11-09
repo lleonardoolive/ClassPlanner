@@ -50,8 +50,8 @@ class JanelaSelecaoBNCC(tk.Toplevel):
         frame_botoes = tk.Frame(self, bg="#F8FAFC")
         frame_botoes.pack(fill="x", padx=20, pady=20)
         
-        ttk.Button(frame_botoes, text="✅ Confirmar Seleção", style="Success.TButton", command=self._confirmar).pack(side="right", padx=5)
-        ttk.Button(frame_botoes, text="❌ Cancelar", command=self.destroy).pack(side="right", padx=5)
+        ttk.Button(frame_botoes, text="Confirmar", style="Primary.TButton", command=self._confirmar).pack(side="right", padx=5)
+        ttk.Button(frame_botoes, text="Cancelar", command=self.destroy).pack(side="right", padx=5)
 
     def _confirmar(self):
         selecionados = [self.listbox.get(i) for i in self.listbox.curselection()]
@@ -138,13 +138,13 @@ class JanelaAvaliacoes(tk.Toplevel):
         self.combo_tipo.set(TipoAvaliacao.PARCIAL.value)
         self.combo_tipo.pack(side="left", padx=5)
         
-        ttk.Button(frame_controles, text="📌 Converter Aula", style="Primary.TButton", command=self._registrar_avaliacao).pack(side="right", padx=5)
+        ttk.Button(frame_controles, text="Converter Aula", style="Primary.TButton", command=self._registrar_avaliacao).pack(side="right", padx=5)
         
         ttk.Label(self, text="Histórico de Registros:", font=("Inter", 10, "bold"), background="#F8FAFC").pack(anchor="w", padx=30, pady=(10, 0))
         self.lista_feedback = tk.Listbox(self, font=("Consolas", 10), height=5, relief="flat", highlightbackground="#E2E8F0", highlightthickness=1)
         self.lista_feedback.pack(fill="x", padx=30, pady=5)
         
-        ttk.Button(self, text="✅ Concluir e Fechar", style="Success.TButton", command=self._fechar).pack(pady=15)
+        ttk.Button(self, text="Concluir", command=self._fechar).pack(pady=15)
 
     def _registrar_avaliacao(self):
         data_sel = self.cal.get_date()
@@ -167,13 +167,13 @@ class JanelaAvaliacoes(tk.Toplevel):
 class PlanejadorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Planejador de Aulas - Dashboard do Professor")
-        self.geometry("1400x850")
-        self.minsize(1200, 750)
+        self.title("ClassPlanner — Planejador de Aulas")
+        self.geometry("1300x820")
+        self.minsize(1100, 700)
         
-        self.fonte_padrao = ("Inter", 11)
-        self.fonte_titulo = ("Inter", 14, "bold")
-        self.fonte_codigo = ("Consolas", 11)
+        self.fonte_padrao = ("Inter", 10)
+        self.fonte_titulo = ("Inter", 13, "bold")
+        self.fonte_codigo = ("Consolas", 10)
         
         self._aplicar_tema_moderno()
         
@@ -207,35 +207,67 @@ class PlanejadorApp(tk.Tk):
         self.configure(bg="#F8FAFC")
         style = ttk.Style(self)
         style.theme_use('clam')
-        cor_fundo, cor_card, cor_texto_principal = "#F8FAFC", "#FFFFFF", "#1E293B"
-        cor_primaria, cor_sucesso, cor_aviso, cor_perigo = "#2563EB", "#10B981", "#F59E0B", "#EF4444"
-        style.configure(".", background=cor_fundo, foreground=cor_texto_principal, font=self.fonte_padrao)
+        
+        cor_fundo = "#F8FAFC"
+        cor_card = "#FFFFFF"
+        cor_borda = "#E2E8F0"
+        cor_texto = "#0F172A"
+        cor_texto_mutado = "#64748B"
+        cor_primaria = "#0F172A"
+        cor_primaria_hover = "#334155"
+        
+        style.configure(".", background=cor_fundo, foreground=cor_texto, font=self.fonte_padrao)
+        
+        # Abas
         style.configure("TNotebook", background=cor_fundo, borderwidth=0)
-        style.configure("TNotebook.Tab", padding=[25, 12], font=("Inter", 11, "bold"), background="#E2E8F0", borderwidth=0)
-        style.map("TNotebook.Tab", background=[("selected", cor_primaria), ("active", "#CBD5E1")], foreground=[("selected", "white")])
-        style.configure("Card.TFrame", background=cor_card, relief="flat", borderwidth=1, bordercolor="#E2E8F0")
-        style.configure("TLabelframe", background=cor_card, font=("Inter", 12, "bold"), borderwidth=1)
-        style.configure("TLabelframe.Label", background=cor_card, foreground=cor_primaria, padding=[10, 5])
-        style.configure("TButton", font=("Inter", 11), padding=[15, 8], borderwidth=0, relief="flat")
-        style.configure("Primary.TButton", background=cor_primaria, foreground="white")
-        style.map("Primary.TButton", background=[("active", "#1D4ED8")])
-        style.configure("Success.TButton", background=cor_sucesso, foreground="white")
-        style.map("Success.TButton", background=[("active", "#059669")])
-        style.configure("Warning.TButton", background=cor_aviso, foreground="white")
-        style.map("Warning.TButton", background=[("active", "#D97706")])
-        style.configure("Danger.TButton", background=cor_perigo, foreground="white")
-        style.map("Danger.TButton", background=[("active", "#B91C1C")])
-        style.configure("Treeview", font=self.fonte_padrao, background=cor_card, foreground=cor_texto_principal, rowheight=35, borderwidth=0)
-        style.configure("Treeview.Heading", font=("Inter", 11, "bold"), background="#F1F5F9", foreground="#475569", padding=[5, 10], borderwidth=0)
-        style.map("Treeview", background=[('selected', '#DBEAFE')], foreground=[('selected', '#1E3A8A')])
+        style.configure("TNotebook.Tab", padding=[18, 10], font=("Inter", 10, "bold"), background="#F1F5F9", foreground=cor_texto_mutado, borderwidth=0)
+        style.map("TNotebook.Tab", 
+                  background=[("selected", cor_card), ("active", "#E2E8F0")], 
+                  foreground=[("selected", cor_texto), ("active", cor_texto)])
+        
+        # Cartões e Blocos
+        style.configure("Card.TFrame", background=cor_card, relief="flat", borderwidth=1, bordercolor=cor_borda)
+        style.configure("TLabelframe", background=cor_card, font=("Inter", 11, "bold"), borderwidth=1, bordercolor=cor_borda)
+        style.configure("TLabelframe.Label", background=cor_card, foreground=cor_texto, padding=[6, 4])
+        
+        # Botões Neutros
+        style.configure("TButton", font=("Inter", 10), padding=[12, 6], background="#FFFFFF", foreground=cor_texto, borderwidth=1, bordercolor=cor_borda, relief="flat")
+        style.map("TButton", 
+                  background=[("active", "#F1F5F9"), ("pressed", "#E2E8F0")], 
+                  foreground=[("active", cor_texto)])
+        
+        # Botão Primário
+        style.configure("Primary.TButton", font=("Inter", 10, "bold"), padding=[14, 6], background=cor_primaria, foreground="#FFFFFF", borderwidth=0, relief="flat")
+        style.map("Primary.TButton", 
+                  background=[("active", cor_primaria_hover), ("pressed", "#0F172A")], 
+                  foreground=[("active", "#FFFFFF")])
+        
+        # Botão Secundário
+        style.configure("Secondary.TButton", font=("Inter", 10), padding=[10, 5], background="#F1F5F9", foreground=cor_texto, borderwidth=0, relief="flat")
+        style.map("Secondary.TButton", 
+                  background=[("active", "#E2E8F0")], 
+                  foreground=[("active", cor_texto)])
+        
+        # Botão Destrutivo (Suave)
+        style.configure("Danger.TButton", font=("Inter", 10), padding=[12, 6], background="#FEF2F2", foreground="#DC2626", borderwidth=1, bordercolor="#FECACA", relief="flat")
+        style.map("Danger.TButton", 
+                  background=[("active", "#FEE2E2"), ("pressed", "#FCA5A5")], 
+                  foreground=[("active", "#B91C1C")])
+        
+        # Tabela
+        style.configure("Treeview", font=self.fonte_padrao, background=cor_card, foreground=cor_texto, rowheight=32, borderwidth=1, bordercolor=cor_borda)
+        style.configure("Treeview.Heading", font=("Inter", 10, "bold"), background="#F8FAFC", foreground=cor_texto_mutado, padding=[6, 8], borderwidth=0)
+        style.map("Treeview", 
+                  background=[('selected', '#F1F5F9')], 
+                  foreground=[('selected', cor_texto)])
 
     def _criar_interface(self):
         self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True, padx=25, pady=25)
-        self.aba_agenda = ttk.Frame(self.notebook); self.notebook.add(self.aba_agenda, text="📅 Agenda Geral")
-        self.aba_editor = ttk.Frame(self.notebook); self.notebook.add(self.aba_editor, text="📝 Editor de Aula")
-        self.aba_grade = ttk.Frame(self.notebook); self.notebook.add(self.aba_grade, text="⚡ Gerador de Grade")
-        self.aba_config = ttk.Frame(self.notebook); self.notebook.add(self.aba_config, text="⚙️ Configurações")
+        self.notebook.pack(fill="both", expand=True, padx=20, pady=20)
+        self.aba_agenda = ttk.Frame(self.notebook); self.notebook.add(self.aba_agenda, text="Agenda")
+        self.aba_editor = ttk.Frame(self.notebook); self.notebook.add(self.aba_editor, text="Planejamento")
+        self.aba_grade = ttk.Frame(self.notebook); self.notebook.add(self.aba_grade, text="Gerador Automático")
+        self.aba_config = ttk.Frame(self.notebook); self.notebook.add(self.aba_config, text="Configurações")
         self._construir_aba_agenda()
         self._construir_aba_editor()
         self._construir_aba_grade()
@@ -303,22 +335,22 @@ class PlanejadorApp(tk.Tk):
             
         self.tree_aulas.bind("<Button-3>", _exibir_menu_contexto)
         
-        self.tree_aulas.tag_configure(CategoriaAula.TEORICA.value, foreground="#1E293B")
-        self.tree_aulas.tag_configure(CategoriaAula.LUDICA.value, foreground="#8B5CF6")
-        self.tree_aulas.tag_configure(CategoriaAula.PRATICA.value, foreground="#059669")
-        self.tree_aulas.tag_configure(CategoriaAula.AVALIACAO.value, foreground="#DC2626", font=("Inter", 11, "bold"))
-        self.tree_aulas.tag_configure(CategoriaAula.REVISAO.value, foreground="#D97706")
-        self.tree_aulas.tag_configure(CategoriaAula.PASSEIO_CULTURA.value, foreground="#2563EB", font=("Inter", 11, "bold"))
+        self.tree_aulas.tag_configure(CategoriaAula.TEORICA.value, foreground="#0F172A")
+        self.tree_aulas.tag_configure(CategoriaAula.LUDICA.value, foreground="#0F172A")
+        self.tree_aulas.tag_configure(CategoriaAula.PRATICA.value, foreground="#0F172A")
+        self.tree_aulas.tag_configure(CategoriaAula.AVALIACAO.value, foreground="#991B1B", font=("Inter", 10, "bold"))
+        self.tree_aulas.tag_configure(CategoriaAula.REVISAO.value, foreground="#0F172A")
+        self.tree_aulas.tag_configure(CategoriaAula.PASSEIO_CULTURA.value, foreground="#312E81", font=("Inter", 10, "bold"))
         
         frame_botoes = ttk.Frame(self.aba_agenda)
-        frame_botoes.pack(fill="x", pady=10)
-        ttk.Button(frame_botoes, text="➕ Nova", style="Primary.TButton", command=self._nova_aula_pelo_calendario).pack(side="left", padx=5)
-        ttk.Button(frame_botoes, text="✏️ Editar", command=self._editar_aula_selecionada).pack(side="left", padx=5)
-        ttk.Button(frame_botoes, text="🐑 Clonar", style="Warning.TButton", command=self._clonar_aula).pack(side="left", padx=5)
-        ttk.Button(frame_botoes, text="🗑️ Excluir", style="Danger.TButton", command=self._excluir_aula).pack(side="left", padx=5)
-        ttk.Button(frame_botoes, text="🧹 Limpar Ano", command=self._limpar_ano_letivo).pack(side="left", padx=5)
-        ttk.Button(frame_botoes, text="☁️ Exportar Web", style="Success.TButton", command=self._exportar_calendario).pack(side="right", padx=5)
-        ttk.Button(frame_botoes, text="📄 Gerar PDF", command=self._exportar_pdf).pack(side="right", padx=5)
+        frame_botoes.pack(fill="x", pady=12)
+        ttk.Button(frame_botoes, text="+ Nova Aula", style="Primary.TButton", command=self._nova_aula_pelo_calendario).pack(side="left", padx=3)
+        ttk.Button(frame_botoes, text="Editar", command=self._editar_aula_selecionada).pack(side="left", padx=3)
+        ttk.Button(frame_botoes, text="Duplicar", command=self._clonar_aula).pack(side="left", padx=3)
+        ttk.Button(frame_botoes, text="Excluir", style="Danger.TButton", command=self._excluir_aula).pack(side="left", padx=3)
+        ttk.Button(frame_botoes, text="Limpar Ano", command=self._limpar_ano_letivo).pack(side="left", padx=3)
+        ttk.Button(frame_botoes, text="Gerar PDF", command=self._exportar_pdf).pack(side="right", padx=3)
+        ttk.Button(frame_botoes, text="Exportar Calendário", command=self._exportar_calendario).pack(side="right", padx=3)
         self._atualizar_lista()
 
     def _ordenar_treeview(self, col, reverse):
@@ -329,36 +361,36 @@ class PlanejadorApp(tk.Tk):
         self.tree_aulas.heading(col, command=lambda: self._ordenar_treeview(col, not reverse))
 
     def _construir_aba_editor(self):
-        container = ttk.Frame(self.aba_editor, padding=30)
+        container = ttk.Frame(self.aba_editor, padding=20)
         container.pack(fill="both", expand=True)
-        form_frame = ttk.LabelFrame(container, text="Detalhes do Planejamento", padding=35)
+        form_frame = ttk.LabelFrame(container, text="Detalhes do Planejamento", padding=20)
         form_frame.pack(fill="both", expand=True)
         self.campos = {}
-        fonte_input = ("Inter", 11)
+        fonte_input = self.fonte_padrao
         
-        ttk.Label(form_frame, text="Data:", background="#ffffff").grid(row=0, column=0, sticky="w", pady=15)
+        ttk.Label(form_frame, text="Data:", background="#ffffff").grid(row=0, column=0, sticky="w", pady=12)
         self.campos['data'] = SeletorDataModal(form_frame, font=fonte_input, background="#ffffff")
         self.campos['data'].grid(row=0, column=1, sticky="w", padx=15)
         
-        ttk.Label(form_frame, text="Turma:", background="#ffffff").grid(row=1, column=0, sticky="w", pady=15)
+        ttk.Label(form_frame, text="Turma:", background="#ffffff").grid(row=1, column=0, sticky="w", pady=12)
         self.campos['turma'] = ttk.Combobox(form_frame, values=self.turmas_cadastradas, width=28, font=fonte_input)
         self.campos['turma'].grid(row=1, column=1, sticky="w", padx=15)
         
-        ttk.Label(form_frame, text="Disciplina:", background="#ffffff").grid(row=1, column=2, sticky="w", pady=15, padx=(20,0))
+        ttk.Label(form_frame, text="Disciplina:", background="#ffffff").grid(row=1, column=2, sticky="w", pady=12, padx=(20,0))
         self.campos['disciplina'] = ttk.Combobox(form_frame, values=self.disciplinas_cadastradas, width=28, font=fonte_input)
         self.campos['disciplina'].grid(row=1, column=3, sticky="w", padx=15)
         self.campos['disciplina'].bind("<<ComboboxSelected>>", self._atualizar_dropdown_bncc)
         
-        ttk.Label(form_frame, text="Categoria:", background="#ffffff").grid(row=2, column=0, sticky="w", pady=15)
+        ttk.Label(form_frame, text="Categoria:", background="#ffffff").grid(row=2, column=0, sticky="w", pady=12)
         self.campos['categoria'] = ttk.Combobox(form_frame, values=[c.value for c in CategoriaAula], state="readonly", width=28, font=fonte_input)
         self.campos['categoria'].set(CategoriaAula.TEORICA.value)
         self.campos['categoria'].grid(row=2, column=1, sticky="w", padx=15)
         self.campos['categoria'].bind("<<ComboboxSelected>>", self._toggle_campos_passeio)
         
-        # --- NOVO SISTEMA BNCC (Compacto) ---
-        ttk.Label(form_frame, text="Códigos BNCC:", background="#ffffff").grid(row=2, column=2, sticky="nw", pady=15, padx=(20,0))
+        # --- SISTEMA BNCC ---
+        ttk.Label(form_frame, text="Códigos BNCC:", background="#ffffff").grid(row=2, column=2, sticky="nw", pady=12, padx=(20,0))
         self.frame_bncc = tk.Frame(form_frame, background="#ffffff")
-        self.frame_bncc.grid(row=2, column=3, sticky="nw", padx=15, pady=15)
+        self.frame_bncc.grid(row=2, column=3, sticky="nw", padx=15, pady=12)
         
         frame_text_bncc = tk.Frame(self.frame_bncc, background="#ffffff")
         frame_text_bncc.pack(fill="x")
@@ -370,12 +402,12 @@ class PlanejadorApp(tk.Tk):
         scroll_bncc.pack(side="left", fill="y")
         self.texto_bncc.config(yscrollcommand=scroll_bncc.set)
         
-        ttk.Button(self.frame_bncc, text="🔍 Selecionar Habilidades", command=self._abrir_modal_bncc).pack(fill="x", pady=(5,0))
+        ttk.Button(self.frame_bncc, text="Selecionar Habilidades...", style="Secondary.TButton", command=self._abrir_modal_bncc).pack(fill="x", pady=(5,0))
         self._atualizar_texto_bncc()
-        # ------------------------------------
+        # --------------------
         
         self.frame_passeio = ttk.Frame(form_frame, style="Card.TFrame", padding=15)
-        self.frame_passeio.grid(row=3, column=0, columnspan=4, sticky="ew", pady=15)
+        self.frame_passeio.grid(row=3, column=0, columnspan=4, sticky="ew", pady=12)
         self.frame_passeio.grid_remove()
         
         ttk.Label(self.frame_passeio, text="Local:", background="#ffffff").grid(row=0, column=0, sticky="w")
@@ -394,14 +426,14 @@ class PlanejadorApp(tk.Tk):
         self.campos['autorizacao_pais'] = tk.BooleanVar()
         ttk.Checkbutton(self.frame_passeio, text="Exige Autorização", variable=self.campos['autorizacao_pais']).grid(row=2, column=0, columnspan=4, sticky="w", pady=(10,0))
         
-        ttk.Label(form_frame, text="Conteúdo / Plano:", background="#ffffff").grid(row=4, column=0, sticky="nw", pady=15)
+        ttk.Label(form_frame, text="Conteúdo / Plano:", background="#ffffff").grid(row=4, column=0, sticky="nw", pady=12)
         self.obs_text = tk.Text(form_frame, height=8, width=80, font=self.fonte_padrao, relief="flat", borderwidth=1, highlightthickness=1, highlightbackground="#E2E8F0")
-        self.obs_text.grid(row=4, column=1, columnspan=3, sticky="w", padx=15, pady=15)
+        self.obs_text.grid(row=4, column=1, columnspan=3, sticky="w", padx=15, pady=12)
         
         btn_frame = ttk.Frame(container)
-        btn_frame.pack(fill="x", pady=20)
-        ttk.Button(btn_frame, text="💾 Salvar Aula", style="Primary.TButton", command=self._salvar_aula).pack(side="right", padx=5)
-        ttk.Button(btn_frame, text="❌ Cancelar", command=self._cancelar_edicao).pack(side="left", padx=5)
+        btn_frame.pack(fill="x", pady=15)
+        ttk.Button(btn_frame, text="Salvar Planejamento", style="Primary.TButton", command=self._salvar_aula).pack(side="right", padx=5)
+        ttk.Button(btn_frame, text="Cancelar", command=self._cancelar_edicao).pack(side="left", padx=5)
 
     def _abrir_modal_bncc(self):
         disc = self.campos['disciplina'].get().strip()
@@ -459,7 +491,7 @@ class PlanejadorApp(tk.Tk):
         self.obs_text.delete("1.0", tk.END); self.obs_text.insert("1.0", aula_original.observacoes)
         self._toggle_campos_passeio()
         self.notebook.select(self.aba_editor)
-        messagebox.showinfo("🐑 Modo Clonagem", "Dados copiados! Modifique a data/turma e salve.")
+        messagebox.showinfo("Modo Duplicação", "Dados copiados para o formulário. Modifique a data/turma e salve.")
 
     def _exportar_calendario(self):
         sel = self.tree_aulas.selection()
@@ -584,28 +616,28 @@ class PlanejadorApp(tk.Tk):
             messagebox.showinfo("Sucesso", f"{len(aulas_ano)} aulas do ano letivo de {ano} foram excluídas.", parent=self)
 
     def _construir_aba_grade(self):
-        container = ttk.Frame(self.aba_grade, padding=40)
+        container = ttk.Frame(self.aba_grade, padding=20)
         container.pack(fill="both", expand=True)
-        card = ttk.Frame(container, style="Card.TFrame", padding=40)
+        card = ttk.Frame(container, style="Card.TFrame", padding=25)
         card.pack(fill="x")
-        ttk.Label(card, text="⚡ Automação de Planejamento", font=("Inter", 18, "bold"), background="#ffffff", foreground="#2563EB").pack(anchor="w", pady=(0, 10))
-        ttk.Label(card, text="Gere aulas automaticamente. O sistema respeita as Fronteiras do Ano Letivo.", font=self.fonte_padrao, background="#ffffff", foreground="#64748B").pack(anchor="w", pady=(0, 30))
+        ttk.Label(card, text="Automação de Planejamento", font=self.fonte_titulo, background="#ffffff", foreground="#0F172A").pack(anchor="w", pady=(0, 4))
+        ttk.Label(card, text="Gere aulas automaticamente para todo o ano letivo respeitando os marcos e feriados configurados.", font=self.fonte_padrao, background="#ffffff", foreground="#64748B").pack(anchor="w", pady=(0, 20))
         form = tk.Frame(card, background="#ffffff")
-        form.pack(fill="x", pady=15)
+        form.pack(fill="x", pady=10)
         ttk.Label(form, text="Turma:", background="#ffffff").grid(row=0, column=0, sticky="w")
         self.combo_turma_grade = ttk.Combobox(form, values=self.turmas_cadastradas, width=30, font=self.fonte_padrao)
-        self.combo_turma_grade.grid(row=1, column=0, padx=(0, 20), pady=10)
+        self.combo_turma_grade.grid(row=1, column=0, padx=(0, 20), pady=8)
         ttk.Label(form, text="Disciplina:", background="#ffffff").grid(row=0, column=1, sticky="w")
         self.combo_disc_grade = ttk.Combobox(form, values=self.disciplinas_cadastradas, width=30, font=self.fonte_padrao)
-        self.combo_disc_grade.grid(row=1, column=1, padx=(0, 20), pady=10)
-        dias_frame = ttk.LabelFrame(card, text="Dias da Semana", padding=20)
-        dias_frame.pack(fill="x", pady=30)
+        self.combo_disc_grade.grid(row=1, column=1, padx=(0, 20), pady=8)
+        dias_frame = ttk.LabelFrame(card, text="Dias da Semana", padding=15)
+        dias_frame.pack(fill="x", pady=20)
         self.vars_dias_grade = []
         for i, nome in enumerate(["Segunda", "Terça", "Quarta", "Quinta", "Sexta"]):
             var = tk.BooleanVar()
             self.vars_dias_grade.append((i, var))
-            ttk.Checkbutton(dias_frame, text=nome, variable=var).pack(side="left", padx=25)
-        ttk.Button(card, text="🚀 Gerar Grade Automática", style="Primary.TButton", command=self._executar_gerador).pack(pady=20)
+            ttk.Checkbutton(dias_frame, text=nome, variable=var).pack(side="left", padx=20)
+        ttk.Button(card, text="Gerar Grade Automática", style="Primary.TButton", command=self._executar_gerador).pack(pady=15)
 
     def _executar_gerador(self):
         turma = self.combo_turma_grade.get().strip()
@@ -648,27 +680,27 @@ class PlanejadorApp(tk.Tk):
         
         botoes_ev = tk.Frame(frame_esq, background="#ffffff")
         botoes_ev.pack(fill="x", pady=15)
-        ttk.Button(botoes_ev, text="🗑️ Remover Selecionado", style="Danger.TButton", command=self._remover_evento).pack(side="right", padx=5)
-        ttk.Button(botoes_ev, text="✏️ Editar Selecionado", command=self._editar_evento).pack(side="right", padx=5)
+        ttk.Button(botoes_ev, text="Remover", style="Danger.TButton", command=self._remover_evento).pack(side="right", padx=5)
+        ttk.Button(botoes_ev, text="Editar", command=self._editar_evento).pack(side="right", padx=5)
         
-        frame_dir = ttk.Frame(pane, style="Card.TFrame", padding=25)
+        frame_dir = ttk.Frame(pane, style="Card.TFrame", padding=20)
         pane.add(frame_dir, weight=1)
         
-        ttk.Label(frame_dir, text="Calendário Padrão de Exportação", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
+        ttk.Label(frame_dir, text="Calendário de Exportação", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
         self.combo_calendario_padrao = ttk.Combobox(frame_dir, values=["Google Calendar", "Microsoft Outlook"], state="readonly", font=self.fonte_padrao)
         self.combo_calendario_padrao.set(self.calendario_padrao)
-        self.combo_calendario_padrao.pack(fill="x", pady=(5, 15))
+        self.combo_calendario_padrao.pack(fill="x", pady=(5, 12))
         
         ttk.Label(frame_dir, text="Turmas", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
-        self.text_turmas = tk.Text(frame_dir, height=5, width=20, font=self.fonte_codigo, relief="solid", borderwidth=1, highlightthickness=0)
-        self.text_turmas.pack(fill="both", expand=True, pady=(5, 15))
+        self.text_turmas = tk.Text(frame_dir, height=4, width=20, font=self.fonte_codigo, relief="flat", borderwidth=1, highlightthickness=1, highlightbackground="#E2E8F0")
+        self.text_turmas.pack(fill="both", expand=True, pady=(5, 12))
         ttk.Label(frame_dir, text="Disciplinas", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
-        self.text_disciplinas = tk.Text(frame_dir, height=5, width=20, font=self.fonte_codigo, relief="solid", borderwidth=1, highlightthickness=0)
-        self.text_disciplinas.pack(fill="both", expand=True, pady=(5, 15))
-        ttk.Label(frame_dir, text="Códigos BNCC (Disc: cod1, cod2)", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
-        self.text_bncc = tk.Text(frame_dir, height=5, width=20, font=self.fonte_codigo, relief="solid", borderwidth=1, highlightthickness=0)
-        self.text_bncc.pack(fill="both", expand=True, pady=(5, 20))
-        ttk.Button(frame_dir, text="💾 Salvar Configurações", style="Success.TButton", command=self._salvar_configuracoes).pack(fill="x")
+        self.text_disciplinas = tk.Text(frame_dir, height=4, width=20, font=self.fonte_codigo, relief="flat", borderwidth=1, highlightthickness=1, highlightbackground="#E2E8F0")
+        self.text_disciplinas.pack(fill="both", expand=True, pady=(5, 12))
+        ttk.Label(frame_dir, text="Habilidades BNCC (Disciplina: cód1, cód2)", font=self.fonte_titulo, background="#ffffff").pack(anchor="w")
+        self.text_bncc = tk.Text(frame_dir, height=4, width=20, font=self.fonte_codigo, relief="flat", borderwidth=1, highlightthickness=1, highlightbackground="#E2E8F0")
+        self.text_bncc.pack(fill="both", expand=True, pady=(5, 15))
+        ttk.Button(frame_dir, text="Salvar Configurações", style="Primary.TButton", command=self._salvar_configuracoes).pack(fill="x")
         self._preencher_configuracoes_ui()
 
     def _adicionar_evento(self):
@@ -751,12 +783,12 @@ class PlanejadorApp(tk.Tk):
 
     def _marcar_calendario(self):
         self.cal.calevent_remove("all")
-        self.cal.tag_config("feriado", background="#EF4444", foreground="white")
-        self.cal.tag_config("sabado_letivo", background="#10B981", foreground="white")
-        self.cal.tag_config("marco_ano", background="#F59E0B", foreground="white")
-        self.cal.tag_config("aula_normal", background="#2563EB", foreground="white")
-        self.cal.tag_config("passeio", background="#8B5CF6", foreground="white")
-        self.cal.tag_config("avaliacao", background="#DC2626", foreground="white")
+        self.cal.tag_config("feriado", background="#FCA5A5", foreground="#7F1D1D")
+        self.cal.tag_config("sabado_letivo", background="#A7F3D0", foreground="#065F46")
+        self.cal.tag_config("marco_ano", background="#FDE68A", foreground="#78350F")
+        self.cal.tag_config("aula_normal", background="#E2E8F0", foreground="#1E293B")
+        self.cal.tag_config("passeio", background="#DDD6FE", foreground="#4C1D95")
+        self.cal.tag_config("avaliacao", background="#FECDD3", foreground="#9F1239")
         for ev in self.eventos_especiais:
             try:
                 data_obj = date.fromisoformat(ev["data"])
@@ -780,12 +812,10 @@ class PlanejadorApp(tk.Tk):
         except ValueError: return
         resumo = []
         for e in [ev for ev in self.eventos_especiais if ev["data"] == data_str]:
-            icone = "⭐" if e["tipo"] in [TipoEvento.INICIO_ANO.value, TipoEvento.FIM_ANO.value] else "🔴" if e["tipo"] != TipoEvento.SABADO_LETIVO.value else "🟢"
-            resumo.append(f"{icone} {e['tipo']}: {e['nome']}")
+            resumo.append(f"• {e['tipo']}: {e['nome']}")
         for a in [au for au in self.aulas_registradas if au.data == data_str]:
-            icone = "📍" if a.categoria == CategoriaAula.PASSEIO_CULTURA.value else "📝" if a.categoria == CategoriaAula.AVALIACAO.value else "📘"
-            resumo.append(f"{icone} {a.turma} - {a.disciplina} ({a.categoria})")
-        self.lbl_resumo_dia.config(text="\n\n".join(resumo) if resumo else "Nenhum evento agendado.", foreground="#1E293B" if resumo else "#94A3B8")
+            resumo.append(f"• {a.turma} — {a.disciplina} ({a.categoria})")
+        self.lbl_resumo_dia.config(text="\n".join(resumo) if resumo else "Nenhum registro para esta data.", foreground="#0F172A" if resumo else "#94A3B8")
 
     def _atualizar_lista(self):
         for item in self.tree_aulas.get_children(): self.tree_aulas.delete(item)
