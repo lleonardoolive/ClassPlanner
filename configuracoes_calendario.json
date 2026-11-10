@@ -1,16 +1,5 @@
 {
-  "eventos": [
-    {
-      "data": "2026-08-04",
-      "nome": "Início do Ano Letivo",
-      "tipo": "Início do Ano Letivo"
-    },
-    {
-      "data": "2026-12-18",
-      "nome": "Fim do Ano Letivo",
-      "tipo": "Fim do Ano Letivo"
-    }
-  ],
+  "eventos": [],
   "turmas": [
     "6º Ano A",
     "7º Ano A",
